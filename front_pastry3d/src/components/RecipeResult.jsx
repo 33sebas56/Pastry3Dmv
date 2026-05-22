@@ -7,6 +7,7 @@ import StatusBadge from "./StatusBadge";
 function parseJson(value, fallback) {
   if (!value) return fallback;
   if (typeof value === "object") return value;
+
   try {
     return JSON.parse(value);
   } catch {
@@ -35,6 +36,17 @@ function canGenerateFromScratch(result, missingAssets) {
   );
 }
 
+function cleanProviderError(message) {
+  if (!message) {
+    return "El proveedor externo no devolvió un mensaje detallado.";
+  }
+
+  return message
+    .replaceAll("\\n", "\n")
+    .replaceAll("\\\"", "\"")
+    .trim();
+}
+
 export default function RecipeResult({ result }) {
   const [generationJob, setGenerationJob] = useState(null);
   const [generationLoading, setGenerationLoading] = useState(false);
@@ -55,11 +67,12 @@ export default function RecipeResult({ result }) {
   const missingAssets = parseJson(result.missingAssetsJson, []);
   const ingredients = readIngredients(recipe);
   const steps = readSteps(recipe);
+  const activeStatus = generationJob?.status || result.status;
   const showGenerateButton = canGenerateFromScratch(result, missingAssets);
 
   async function handleGenerateFromScratch() {
     const confirmed = window.confirm(
-      "Esto enviará el prompt a FairStack para generar un modelo 3D desde cero. Puede consumir créditos. ¿Continuar?"
+      "Esto intentará enviar el prompt a un proveedor externo de IA 3D. Puede consumir créditos si el proveedor acepta la solicitud. ¿Continuar?"
     );
 
     if (!confirmed) return;
@@ -71,7 +84,7 @@ export default function RecipeResult({ result }) {
       const response = await apiClient.startFairStackGeneration(result.recipeId);
       setGenerationJob(response);
     } catch (err) {
-      setGenerationError(err.message || "No se pudo iniciar la generación con FairStack");
+      setGenerationError(err.message || "No se pudo iniciar la generación externa.");
     } finally {
       setGenerationLoading(false);
     }
@@ -87,7 +100,7 @@ export default function RecipeResult({ result }) {
       const response = await apiClient.syncGenerationJob(generationJob.id);
       setGenerationJob(response);
     } catch (err) {
-      setGenerationError(err.message || "No se pudo sincronizar el job de generación");
+      setGenerationError(err.message || "No se pudo sincronizar el job de generación.");
     } finally {
       setGenerationLoading(false);
     }
@@ -101,7 +114,7 @@ export default function RecipeResult({ result }) {
             <p className="eyebrow">Resultado</p>
             <h2>{result.title || recipe.title || "Receta generada"}</h2>
           </div>
-          <StatusBadge status={generationJob?.status || result.status} />
+          <StatusBadge status={activeStatus} />
         </div>
 
         <div className="recipe-meta">
@@ -119,7 +132,9 @@ export default function RecipeResult({ result }) {
           </span>
         </div>
 
-        {recipe.description && <p className="recipe-description">{recipe.description}</p>}
+        {recipe.description && (
+          <p className="recipe-description">{recipe.description}</p>
+        )}
 
         {missingAssets.length > 0 && (
           <div className="warning-box">
@@ -127,6 +142,10 @@ export default function RecipeResult({ result }) {
             <div>
               <strong>Faltan modelos para completar la escena</strong>
               <p>{missingAssets.join(", ")}</p>
+
+              <p className="muted">
+                Pastry3D dejó preparado el prompt y el job para generación externa. Si el proveedor 3D está disponible, el modelo puede generarse y guardarse en la biblioteca.
+              </p>
 
               {showGenerateButton && (
                 <div className="generation-actions">
@@ -137,7 +156,7 @@ export default function RecipeResult({ result }) {
                     disabled={generationLoading}
                   >
                     <Sparkles size={17} />
-                    {generationLoading ? "Enviando a FairStack..." : "Generar desde cero"}
+                    {generationLoading ? "Enviando..." : "Generar desde cero"}
                   </button>
                 </div>
               )}
@@ -145,7 +164,12 @@ export default function RecipeResult({ result }) {
           </div>
         )}
 
-        {generationError && <div className="error-box large">{generationError}</div>}
+        {generationError && (
+          <div className="error-box large">
+            <strong>Error de generación</strong>
+            <p>{generationError}</p>
+          </div>
+        )}
 
         {generationJob && (
           <div className="generation-box">
@@ -154,20 +178,16 @@ export default function RecipeResult({ result }) {
 
             {generationJob.status === "FAILED" && (
               <div className="error-box large">
-                <strong>No se pudo generar el modelo con el proveedor externo.</strong>
-                <p>
-                  {generationJob.errorMessage ||
-                    "El proveedor respondió con error, pero no devolvió un mensaje detallado."}
-                </p>
+                <strong>El proveedor externo rechazó la solicitud.</strong>
+                <p>{cleanProviderError(generationJob.errorMessage)}</p>
               </div>
             )}
 
             {generationJob.modelAssetId ? (
               <p>Modelo generado y guardado en la biblioteca.</p>
             ) : generationJob.status === "FAILED" ? (
-              <p>
-                La arquitectura de generación quedó preparada, pero el proveedor externo rechazó la solicitud.
-                Revisa el endpoint 3D real en el dashboard de FairStack antes de volver a intentar.
+              <p className="muted">
+                La arquitectura de generación quedó preparada, pero el proveedor externo no aceptó la generación 3D con la configuración actual. La experiencia principal sigue funcionando con modelos GLB locales y composición por assets.
               </p>
             ) : (
               <p>
@@ -197,7 +217,8 @@ export default function RecipeResult({ result }) {
                   <li key={`${item.name || "ingredient"}-${index}`}>
                     <span>{item.name || item.ingredient || "Ingrediente"}</span>
                     <small>
-                      {[item.quantity, item.unit].filter(Boolean).join(" ") || "Cantidad al gusto"}
+                      {[item.quantity, item.unit].filter(Boolean).join(" ") ||
+                        "Cantidad al gusto"}
                     </small>
                   </li>
                 ))}
@@ -230,7 +251,12 @@ export default function RecipeResult({ result }) {
             <h2>Composición visual</h2>
           </div>
         </div>
-        <SceneViewer sceneJson={result.sceneJson} modelUrl={result.modelUrl} status={generationJob?.status || result.status} />
+
+        <SceneViewer
+          sceneJson={result.sceneJson}
+          modelUrl={result.modelUrl}
+          status={activeStatus}
+        />
       </div>
     </section>
   );
