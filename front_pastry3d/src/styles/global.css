@@ -656,3 +656,121 @@ textarea:focus {
 .generation-box p {
   margin: 0.35rem 0 0.8rem;
 }
+
+:root {
+  --p3d-bg: #f7f2ea;
+  --p3d-surface: rgba(255, 255, 255, 0.86);
+  --p3d-surface-strong: #ffffff;
+  --p3d-text: #21170f;
+  --p3d-muted: #7c6a5c;
+  --p3d-border: rgba(80, 55, 35, 0.14);
+  --p3d-accent: #d83f00;
+  --p3d-accent-2: #ff8400;
+  --p3d-shadow: 0 24px 60px rgba(78, 45, 18, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --p3d-bg: #11100f;
+    --p3d-surface: rgba(31, 29, 27, 0.88);
+    --p3d-surface-strong: #201d1b;
+    --p3d-text: #fff7ef;
+    --p3d-muted: #bcaea1;
+    --p3d-border: rgba(255, 255, 255, 0.11);
+    --p3d-accent: #ff8400;
+    --p3d-accent-2: #ff9b30;
+    --p3d-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  }
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(255, 132, 0, 0.16), transparent 34rem),
+    radial-gradient(circle at bottom right, rgba(216, 63, 0, 0.13), transparent 32rem),
+    var(--p3d-bg);
+  color: var(--p3d-text);
+}
+
+.panel,
+.recipe-panel,
+.visual-panel,
+.empty-result {
+  background: var(--p3d-surface);
+  border: 1px solid var(--p3d-border);
+  box-shadow: var(--p3d-shadow);
+  backdrop-filter: blur(14px);
+}
+
+.panel h1,
+.panel h2,
+.panel h3,
+.recipe-panel h1,
+.recipe-panel h2,
+.recipe-panel h3,
+.visual-panel h1,
+.visual-panel h2,
+.visual-panel h3 {
+  color: var(--p3d-text);
+}
+
+.muted,
+.recipe-description,
+.recipe-meta,
+.clean-list small,
+.steps-list p {
+  color: var(--p3d-muted);
+}
+
+.primary-button {
+  background: linear-gradient(135deg, var(--p3d-accent), var(--p3d-accent-2));
+  box-shadow: 0 14px 30px rgba(216, 63, 0, 0.22);
+}
+
+.secondary-button {
+  border: 1px solid var(--p3d-border);
+  background: var(--p3d-surface-strong);
+  color: var(--p3d-text);
+}
+
+.warning-box {
+  border: 1px solid rgba(255, 132, 0, 0.35);
+  background: rgba(255, 132, 0, 0.12);
+}
+
+.error-box.large {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.generation-box {
+  border: 1px solid rgba(216, 63, 0, 0.22);
+  background: linear-gradient(135deg, rgba(255, 132, 0, 0.14), rgba(216, 63, 0, 0.08));
+  color: var(--p3d-text);
+  border-radius: 18px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.result-grid {
+  gap: 1.25rem;
+}
+
+.visual-panel canvas {
+  border-radius: 22px;
+}
+
+.recipe-meta span {
+  border: 1px solid var(--p3d-border);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 0.45rem 0.7rem;
+}
+
+.clean-list li,
+.steps-list li {
+  border: 1px solid var(--p3d-border);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 0.8rem;
+  margin-bottom: 0.65rem;
+}

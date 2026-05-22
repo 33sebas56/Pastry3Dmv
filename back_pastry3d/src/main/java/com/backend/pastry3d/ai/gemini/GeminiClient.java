@@ -1,20 +1,21 @@
 package com.backend.pastry3d.ai.gemini;
 
+import com.backend.pastry3d.shared.exception.BadRequestException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -22,165 +23,149 @@ public class GeminiClient {
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final boolean enabled;
     private final String apiKey;
     private final String model;
-    private final boolean enabled;
 
     public GeminiClient(
             ObjectMapper objectMapper,
+            @Value("${gemini.enabled:false}") boolean enabled,
             @Value("${gemini.api-key:}") String apiKey,
-            @Value("${gemini.model:gemini-1.5-flash}") String model,
-            @Value("${gemini.enabled:false}") boolean enabled
+            @Value("${gemini.model:gemini-1.5-flash}") String model
     ) {
         this.objectMapper = objectMapper;
+        this.enabled = enabled;
         this.apiKey = apiKey;
         this.model = model;
-        this.enabled = enabled;
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(20))
+                .connectTimeout(Duration.ofSeconds(30))
                 .build();
     }
 
     public Map<String, Object> generateRecipePlan(String userPrompt) {
+        if (userPrompt == null || userPrompt.isBlank()) {
+            throw new BadRequestException("El prompt no puede estar vacío");
+        }
+
         if (!enabled || apiKey == null || apiKey.isBlank()) {
             return fallbackPlan(userPrompt);
         }
 
         try {
-            String prompt = buildPrompt(userPrompt);
+            String instruction = buildInstruction(userPrompt);
+            String body = buildGeminiRequest(instruction);
 
-            Map<String, Object> generationConfig = new HashMap<>();
-            generationConfig.put("temperature", 0.35);
-            generationConfig.put("topP", 0.9);
-            generationConfig.put("maxOutputTokens", 4096);
-            generationConfig.put("responseMimeType", "application/json");
+            String encodedModel = URLEncoder.encode(model, StandardCharsets.UTF_8);
+            String url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodedModel + ":generateContent?key=" + apiKey;
 
-            Map<String, Object> request = new HashMap<>();
-            request.put("contents", List.of(
-                    Map.of(
-                            "role", "user",
-                            "parts", List.of(Map.of("text", prompt))
-                    )
-            ));
-            request.put("generationConfig", generationConfig);
-
-            String body = objectMapper.writeValueAsString(request);
-
-            URI uri = URI.create(
-                    "https://generativelanguage.googleapis.com/v1beta/models/"
-                            + model
-                            + ":generateContent?key="
-                            + apiKey
-            );
-
-            HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .uri(uri)
-                    .timeout(Duration.ofSeconds(70))
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(60))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 return fallbackPlan(userPrompt);
             }
 
-            Map<String, Object> raw = objectMapper.readValue(response.body(), new TypeReference<>() {});
-            String text = extractText(raw);
+            String text = extractGeminiText(response.body());
+            String json = cleanJson(text);
 
-            if (text == null || text.isBlank()) {
-                return fallbackPlan(userPrompt);
-            }
-
-            String cleanJson = cleanJsonText(text);
-            Map<String, Object> parsed = objectMapper.readValue(cleanJson, new TypeReference<>() {});
-
-            if (!parsed.containsKey("recipe") || !parsed.containsKey("visualPlan")) {
-                return fallbackPlan(userPrompt);
-            }
-
-            return parsed;
+            Map<String, Object> result = objectMapper.readValue(json, new TypeReference<>() {});
+            return normalizePlan(result, userPrompt);
         } catch (Exception exception) {
             return fallbackPlan(userPrompt);
         }
     }
 
-    private String buildPrompt(String userPrompt) {
+    private String buildInstruction(String userPrompt) {
         return """
-                Eres el director creativo y chef técnico de Pastry3D.
-
-                Tu tarea:
-                1. Entender el pedido del usuario.
-                2. Generar una receta realista, detallada y útil en español.
-                3. Generar un plan visual estructurado para que el backend pueda buscar modelos GLB existentes.
-                4. NO inventar que ya existe un archivo GLB.
-                5. NO decir que generaste un modelo 3D.
-                6. Solo debes devolver JSON válido, sin markdown, sin explicación, sin texto adicional.
-
-                La arquitectura del sistema:
-                - Gemini genera la receta y el plan visual.
-                - El backend busca assets GLB existentes.
-                - El backend compone la escena con base + toppings + decoraciones.
-                - Si falta un asset, el backend lo marca como pendiente.
-
-                Tipos de postre permitidos para "dessertType":
-                - round_cake
-                - milhojas
-                - cupcake
-                - cheesecake
-                - tart
-                - brownie
-                - cookie
-                - donut
-                - macaron
-                - tiramisu
-                - flan
-                - alfajor
-                - tres_leches
-                - generic_dessert
-
-                Categorías visuales permitidas:
-                - BASE
-                - TOPPING
-                - DECORATION
-                - SAUCE
-                - SPRINKLES
-
-                Assets conocidos actualmente o esperados:
-                - round_cake_base_vanilla: base de pastel redondo de vainilla
-                - milhojas_base_classic: base de milhojas clásica
-                - caramel_rose: rosa de caramelo o decoración tipo rosa
-                - strawberry_topping: fresa decorativa
-                - birthday_candle: vela de cumpleaños
-                - chocolate_drizzle: salsa o baño de chocolate
-                - cream_swirl: copo o decoración de crema
-                - rainbow_sprinkles: chispas de colores
-
-                Reglas importantes:
-                - El postre principal debe ir en recipe.dessertType y visualPlan.dessertType.
-                - Si el usuario pide "milhojas con rosa", dessertType debe ser "milhojas".
-                - La rosa debe ir en visualPlan.requiredAssets como decoración o topping.
-                - Si el usuario pide color azul, rojo, rosa, amarillo, verde, morado, blanco, negro o chocolate, usa color HEX.
-                - Para rosas, usa materialTarget "petals".
-                - Para velas, usa materialTarget "primary".
-                - Para crema, usa materialTarget "cream".
-                - Para chocolate, usa materialTarget "chocolate".
-                - La receta debe ser de repostería realista, no genérica.
-                - Los pasos deben ser claros y ordenados.
-                - estimatedMinutes debe ser razonable.
-                - ingredients debe tener cantidades y unidades.
-
-                Devuelve exactamente esta estructura:
-
+                Eres el motor culinario y visual de Pastry3D.
+                Debes generar una receta realista en español y un plan visual 3D compatible con una biblioteca de modelos GLB.
+                
+                Pedido del usuario:
+                "%s"
+                
+                Reglas críticas:
+                1. Respeta el postre principal pedido por el usuario. No cambies torta por flan, ni flan por pastel, ni dona por helado.
+                2. La receta debe parecer real: ingredientes coherentes, cantidades, tiempos y pasos prácticos.
+                3. No repitas siempre la misma receta base. Varía según el postre: flan, dona, helado, milhojas, cheesecake, cupcake, tarta o pastel.
+                4. Separa lo culinario de lo visual. Una rosa o una cereza puede ser decoración visual, no necesariamente ingrediente principal.
+                5. Si existe un modelo completo vistoso, úsalo con requiredAssets vacío.
+                6. Si el usuario pide una base combinable con toppings, usa requiredAssets para pedir toppings.
+                7. Si pide dos toppings, incluye ambos y usa anchors diferentes.
+                8. Si pide algo que no existe, por ejemplo dragón, corona, unicornio o personaje, inclúyelo como requiredAsset con un assetKey descriptivo para que el backend lo marque como faltante.
+                9. Devuelve solo JSON válido. No uses markdown.
+                
+                Tipos de postre disponibles:
+                - flan: flan napolitano completo
+                - chocolate_cake: pastel o torta de chocolate completo
+                - strawberry_cake: pastel o torta de fresa completo
+                - donut: dona glaseada completa
+                - ice_cream: copa de helado completa
+                - round_cake: pastel/torta redonda combinable
+                - milhojas: milhojas combinable
+                - cupcake: cupcake combinable
+                - cheesecake: cheesecake combinable
+                - tart: tarta combinable
+                
+                Assets visuales disponibles:
+                Bases:
+                - round_cake_base_vanilla
+                - milhojas_base_classic
+                - cupcake_base_vanilla
+                - cheesecake_base_plain
+                - tart_base_vanilla
+                
+                Modelos completos:
+                - flan_napolitano_complete, dessertType flan
+                - chocolate_cake_complete, dessertType chocolate_cake
+                - strawberry_cake_complete, dessertType strawberry_cake
+                - donut_glazed_complete, dessertType donut
+                - ice_cream_cup_complete, dessertType ice_cream
+                
+                Toppings:
+                - caramel_rose, rosa o rosas de caramelo
+                - strawberry_topping, fresa
+                - blueberry_topping, arándanos
+                - cherry_topping, cereza
+                - cream_swirl, crema o chantilly
+                - birthday_candle, vela
+                - macaron_topping, macaron
+                - chocolate_bar_piece, trozo de chocolate
+                - chocolate_drizzle, salsa o chorreado de chocolate
+                
+                Anchors permitidos:
+                - top_center
+                - top_left
+                - top_right
+                - top_front
+                - top_back
+                - side_front
+                - top_drizzle
+                
+                Colores sugeridos:
+                - rosa rojo: #C92A3A
+                - rosa azul: #2F80ED
+                - fresa rojo: #D72638
+                - cereza rojo: #C9182B
+                - arándano azul: #2F3E8C
+                - chocolate: #4B2418
+                - crema: #FFF2E6
+                - dorado: #D4AF37
+                
+                Formato obligatorio:
                 {
                   "recipe": {
                     "title": "string",
                     "dessertType": "string",
-                    "description": "string",
-                    "servings": 0,
                     "difficulty": "BEGINNER|INTERMEDIATE|ADVANCED",
-                    "estimatedMinutes": 0,
+                    "servings": 8,
+                    "estimatedMinutes": 60,
+                    "description": "string",
                     "ingredients": [
                       {
                         "name": "string",
@@ -190,79 +175,110 @@ public class GeminiClient {
                     ],
                     "steps": [
                       {
-                        "order": 1,
                         "title": "string",
                         "description": "string"
                       }
-                    ],
-                    "learningTips": [
-                      "string"
                     ]
                   },
                   "visualPlan": {
-                    "strategy": "COMPOSE_SCENE",
-                    "normalizedPrompt": "string",
                     "dessertType": "string",
-                    "keywords": ["string"],
-                    "baseAssetQuery": "string",
+                    "normalizedPrompt": "string",
+                    "modelPrompt": "English prompt for generating a clean centered 3D GLB asset if a missing model is needed",
                     "requiredAssets": [
                       {
-                        "category": "TOPPING|DECORATION|SAUCE|SPRINKLES",
-                        "type": "string",
                         "assetKey": "string",
+                        "category": "TOPPING|SAUCE|DECORATION",
+                        "type": "string",
                         "query": "string",
-                        "color": "string|null",
-                        "anchor": "top_center|top_left|top_right|top_back|top_ring|side_front|top_drizzle",
+                        "anchor": "top_center",
                         "relativeSize": "small|medium|large",
-                        "materialTarget": "string"
+                        "color": "#HEX",
+                        "materialTarget": "primary"
                       }
-                    ],
-                    "modelPrompt": "string",
-                    "missingPolicy": "IF_ASSET_NOT_FOUND_MARK_PENDING_MANUAL_MODEL"
+                    ]
                   }
                 }
-
-                Pedido del usuario:
-                "%s"
-                """.formatted(userPrompt == null ? "" : userPrompt.trim());
+                
+                Ejemplos de decisión:
+                - "flan napolitano" => dessertType flan, requiredAssets []
+                - "dona glaseada" => dessertType donut, requiredAssets []
+                - "copa de helado" => dessertType ice_cream, requiredAssets []
+                - "pastel de chocolate" => dessertType chocolate_cake, requiredAssets []
+                - "pastel de fresa" => dessertType strawberry_cake, requiredAssets []
+                - "torta con rosas y fresas" => dessertType round_cake, requiredAssets caramel_rose y strawberry_topping
+                - "milhojas con cerezas y arándanos" => dessertType milhojas, requiredAssets cherry_topping y blueberry_topping
+                - "pastel con dragón dorado" => dessertType round_cake, requiredAssets dragon_gold_topper
+                """.formatted(userPrompt);
     }
 
-    private String extractText(Map<String, Object> raw) {
-        Object candidatesObj = raw.get("candidates");
+    private String buildGeminiRequest(String instruction) {
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
 
-        if (!(candidatesObj instanceof List<?> candidates) || candidates.isEmpty()) {
-            return null;
+            Map<String, Object> part = Map.of("text", instruction);
+            Map<String, Object> content = Map.of("parts", List.of(part));
+
+            payload.put("contents", List.of(content));
+            payload.put("generationConfig", Map.of(
+                    "temperature", 0.85,
+                    "topP", 0.9,
+                    "topK", 40,
+                    "maxOutputTokens", 4096,
+                    "responseMimeType", "application/json"
+            ));
+
+            return objectMapper.writeValueAsString(payload);
+        } catch (Exception exception) {
+            throw new BadRequestException("No se pudo construir la solicitud a Gemini");
         }
-
-        Object firstObj = candidates.get(0);
-
-        if (!(firstObj instanceof Map<?, ?> first)) {
-            return null;
-        }
-
-        Object contentObj = first.get("content");
-
-        if (!(contentObj instanceof Map<?, ?> content)) {
-            return null;
-        }
-
-        Object partsObj = content.get("parts");
-
-        if (!(partsObj instanceof List<?> parts) || parts.isEmpty()) {
-            return null;
-        }
-
-        Object partObj = parts.get(0);
-
-        if (!(partObj instanceof Map<?, ?> part)) {
-            return null;
-        }
-
-        Object text = part.get("text");
-        return text == null ? null : text.toString();
     }
 
-    private String cleanJsonText(String text) {
+    private String extractGeminiText(String responseBody) {
+        try {
+            Map<String, Object> response = objectMapper.readValue(responseBody, new TypeReference<>() {});
+            Object candidatesObject = response.get("candidates");
+
+            if (!(candidatesObject instanceof List<?> candidates) || candidates.isEmpty()) {
+                throw new BadRequestException("Gemini no devolvió candidatos");
+            }
+
+            Object firstCandidate = candidates.get(0);
+
+            if (!(firstCandidate instanceof Map<?, ?> candidateMap)) {
+                throw new BadRequestException("Respuesta inválida de Gemini");
+            }
+
+            Object contentObject = candidateMap.get("content");
+
+            if (!(contentObject instanceof Map<?, ?> contentMap)) {
+                throw new BadRequestException("Gemini no devolvió contenido");
+            }
+
+            Object partsObject = contentMap.get("parts");
+
+            if (!(partsObject instanceof List<?> parts) || parts.isEmpty()) {
+                throw new BadRequestException("Gemini no devolvió partes");
+            }
+
+            Object firstPart = parts.get(0);
+
+            if (!(firstPart instanceof Map<?, ?> partMap)) {
+                throw new BadRequestException("Parte inválida de Gemini");
+            }
+
+            Object text = partMap.get("text");
+
+            if (text == null || text.toString().isBlank()) {
+                throw new BadRequestException("Gemini devolvió texto vacío");
+            }
+
+            return text.toString();
+        } catch (Exception exception) {
+            throw new BadRequestException("No se pudo leer la respuesta de Gemini");
+        }
+    }
+
+    private String cleanJson(String text) {
         String cleaned = text.trim();
 
         if (cleaned.startsWith("```json")) {
@@ -287,531 +303,368 @@ public class GeminiClient {
         return cleaned;
     }
 
-    private Map<String, Object> fallbackPlan(String prompt) {
-        String rawPrompt = prompt == null ? "" : prompt.trim();
-        String lower = rawPrompt.toLowerCase(Locale.ROOT);
+    private Map<String, Object> normalizePlan(Map<String, Object> result, String userPrompt) {
+        Map<String, Object> recipe = mapValue(result.get("recipe"));
+        Map<String, Object> visualPlan = mapValue(result.get("visualPlan"));
 
-        String dessertType = resolveDessertType(lower);
-        String color = resolveColor(lower);
-        List<Map<String, Object>> requiredAssets = resolveRequiredAssets(lower, color);
+        String dessertType = normalizeDessertType(
+                stringValue(recipe.get("dessertType"), stringValue(visualPlan.get("dessertType"), detectDessertType(userPrompt)))
+        );
 
-        Map<String, Object> recipe = buildFallbackRecipe(dessertType, requiredAssets);
-        Map<String, Object> visualPlan = buildFallbackVisualPlan(rawPrompt, lower, dessertType, requiredAssets);
+        recipe.put("dessertType", dessertType);
+        recipe.putIfAbsent("title", titleForDessert(dessertType, userPrompt));
+        recipe.putIfAbsent("difficulty", "BEGINNER");
+        recipe.putIfAbsent("servings", 8);
+        recipe.putIfAbsent("estimatedMinutes", estimatedMinutes(dessertType));
+        recipe.putIfAbsent("description", descriptionForDessert(dessertType));
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("recipe", recipe);
-        result.put("visualPlan", visualPlan);
-        return result;
+        if (!(recipe.get("ingredients") instanceof List<?>)) {
+            recipe.put("ingredients", fallbackIngredients(dessertType));
+        }
+
+        if (!(recipe.get("steps") instanceof List<?>)) {
+            recipe.put("steps", fallbackSteps(dessertType));
+        }
+
+        visualPlan.put("dessertType", dessertType);
+        visualPlan.putIfAbsent("normalizedPrompt", userPrompt);
+        visualPlan.putIfAbsent("modelPrompt", buildModelPrompt(userPrompt, dessertType));
+
+        if (!(visualPlan.get("requiredAssets") instanceof List<?>)) {
+            visualPlan.put("requiredAssets", fallbackRequiredAssets(userPrompt, dessertType));
+        }
+
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        normalized.put("recipe", recipe);
+        normalized.put("visualPlan", visualPlan);
+        return normalized;
     }
 
-    private Map<String, Object> buildFallbackRecipe(String dessertType, List<Map<String, Object>> requiredAssets) {
-        String title = buildTitle(dessertType, requiredAssets);
+    private Map<String, Object> fallbackPlan(String userPrompt) {
+        String dessertType = detectDessertType(userPrompt);
 
         Map<String, Object> recipe = new LinkedHashMap<>();
-        recipe.put("title", title);
+        recipe.put("title", titleForDessert(dessertType, userPrompt));
         recipe.put("dessertType", dessertType);
-        recipe.put("description", buildDescription(dessertType, requiredAssets));
-        recipe.put("servings", defaultServings(dessertType));
-        recipe.put("difficulty", defaultDifficulty(dessertType));
-        recipe.put("estimatedMinutes", defaultMinutes(dessertType));
-        recipe.put("ingredients", fallbackIngredients(dessertType, requiredAssets));
-        recipe.put("steps", fallbackSteps(dessertType, requiredAssets));
-        recipe.put("learningTips", fallbackLearningTips(dessertType));
+        recipe.put("difficulty", "BEGINNER");
+        recipe.put("servings", 8);
+        recipe.put("estimatedMinutes", estimatedMinutes(dessertType));
+        recipe.put("description", descriptionForDessert(dessertType));
+        recipe.put("ingredients", fallbackIngredients(dessertType));
+        recipe.put("steps", fallbackSteps(dessertType));
 
-        return recipe;
-    }
-
-    private Map<String, Object> buildFallbackVisualPlan(
-            String rawPrompt,
-            String lower,
-            String dessertType,
-            List<Map<String, Object>> requiredAssets
-    ) {
         Map<String, Object> visualPlan = new LinkedHashMap<>();
-        visualPlan.put("strategy", "COMPOSE_SCENE");
-        visualPlan.put("normalizedPrompt", lower);
         visualPlan.put("dessertType", dessertType);
-        visualPlan.put("keywords", buildKeywords(dessertType, requiredAssets));
-        visualPlan.put("baseAssetQuery", dessertType + " base");
-        visualPlan.put("requiredAssets", requiredAssets);
-        visualPlan.put("modelPrompt", buildModelPrompt(rawPrompt, dessertType, requiredAssets));
-        visualPlan.put("missingPolicy", "IF_ASSET_NOT_FOUND_MARK_PENDING_MANUAL_MODEL");
-        return visualPlan;
+        visualPlan.put("normalizedPrompt", userPrompt);
+        visualPlan.put("modelPrompt", buildModelPrompt(userPrompt, dessertType));
+        visualPlan.put("requiredAssets", fallbackRequiredAssets(userPrompt, dessertType));
+
+        Map<String, Object> plan = new LinkedHashMap<>();
+        plan.put("recipe", recipe);
+        plan.put("visualPlan", visualPlan);
+        return plan;
     }
 
-    private String resolveDessertType(String lower) {
-        if (containsAny(lower, "milhojas", "mille feuille", "mille-feuille", "millefeuille")) {
-            return "milhojas";
-        }
+    private String detectDessertType(String prompt) {
+        String text = prompt == null ? "" : prompt.toLowerCase();
 
-        if (containsAny(lower, "tres leches", "tres_leches")) {
-            return "tres_leches";
-        }
-
-        if (containsAny(lower, "cheesecake", "pay de queso", "tarta de queso")) {
-            return "cheesecake";
-        }
-
-        if (containsAny(lower, "tarta", "tart", "pie", "pay")) {
-            return "tart";
-        }
-
-        if (containsAny(lower, "brownie")) {
-            return "brownie";
-        }
-
-        if (containsAny(lower, "macaron", "macarrón", "macarron")) {
-            return "macaron";
-        }
-
-        if (containsAny(lower, "tiramisú", "tiramisu")) {
-            return "tiramisu";
-        }
-
-        if (containsAny(lower, "flan")) {
+        if (containsAny(text, "flan", "napolitano")) {
             return "flan";
         }
 
-        if (containsAny(lower, "alfajor", "alfajores")) {
-            return "alfajor";
-        }
-
-        if (containsAny(lower, "cupcake", "magdalena")) {
-            return "cupcake";
-        }
-
-        if (containsAny(lower, "donut", "dona", "rosquilla")) {
+        if (containsAny(text, "dona", "donut", "rosquilla")) {
             return "donut";
         }
 
-        if (containsAny(lower, "galleta", "cookie")) {
-            return "cookie";
+        if (containsAny(text, "helado", "ice cream", "copa de helado")) {
+            return "ice_cream";
         }
 
-        if (containsAny(lower, "pastel", "cake", "torta", "bizcocho", "ponqué", "ponque")) {
+        if (containsAny(text, "milhojas", "mille feuille", "millefeuille")) {
+            return "milhojas";
+        }
+
+        if (containsAny(text, "cupcake", "magdalena")) {
+            return "cupcake";
+        }
+
+        if (containsAny(text, "cheesecake", "tarta de queso", "pay de queso")) {
+            return "cheesecake";
+        }
+
+        if (containsAny(text, "tarta", "pay", "pie")) {
+            return "tart";
+        }
+
+        if (containsAny(text, "fresa", "strawberry") && containsAny(text, "pastel", "torta", "cake")) {
+            return "strawberry_cake";
+        }
+
+        if (containsAny(text, "chocolate", "cacao") && containsAny(text, "pastel", "torta", "cake")) {
+            return "chocolate_cake";
+        }
+
+        return "round_cake";
+    }
+
+    private String normalizeDessertType(String dessertType) {
+        if (dessertType == null || dessertType.isBlank()) {
             return "round_cake";
         }
 
-        return "generic_dessert";
+        String value = dessertType.trim().toLowerCase()
+                .replace("-", "_")
+                .replace(" ", "_");
+
+        return switch (value) {
+            case "cake", "pastel", "torta", "roundcake", "round_cake", "vanilla_cake" -> "round_cake";
+            case "chocolate", "chocolatecake", "chocolate_cake", "pastel_de_chocolate", "torta_de_chocolate" -> "chocolate_cake";
+            case "strawberry", "strawberrycake", "strawberry_cake", "pastel_de_fresa", "torta_de_fresa" -> "strawberry_cake";
+            case "icecream", "ice_cream", "helado", "copa_de_helado" -> "ice_cream";
+            case "donut", "dona", "rosquilla" -> "donut";
+            case "flan", "flan_napolitano" -> "flan";
+            case "milhojas", "millefeuille", "mille_feuille" -> "milhojas";
+            case "cupcake" -> "cupcake";
+            case "cheesecake" -> "cheesecake";
+            case "tart", "tarta", "pie", "pay" -> "tart";
+            default -> value;
+        };
     }
 
-    private List<Map<String, Object>> resolveRequiredAssets(String lower, String color) {
+    private List<Map<String, Object>> fallbackRequiredAssets(String prompt, String dessertType) {
+        String text = prompt == null ? "" : prompt.toLowerCase();
         List<Map<String, Object>> assets = new ArrayList<>();
 
-        if (containsAny(lower, "rosa", "rose", "flor")) {
-            assets.add(requiredAsset(
-                    "TOPPING",
-                    "rose",
-                    "caramel_rose",
-                    "caramel rose decoration",
-                    color,
-                    "top_center",
-                    "small",
-                    "petals"
-            ));
+        if (isCompleteShowcaseDessert(dessertType) && !containsAny(text, "con rosa", "con fres", "con cereza", "con arándano", "con arandano", "con vela", "con crema")) {
+            return assets;
         }
 
-        if (containsAny(lower, "fresa", "fresas", "strawberry", "frutilla", "frutillas")) {
-            assets.add(requiredAsset(
-                    "TOPPING",
-                    "strawberry",
-                    "strawberry_topping",
-                    "strawberry topping",
-                    "#D62828",
-                    "top_ring",
-                    "small",
-                    "primary"
-            ));
+        if (containsAny(text, "rosa", "rosas", "flor", "flores")) {
+            assets.add(asset("caramel_rose", "TOPPING", "rose", "rosas de caramelo", "top_center", "medium", "#C92A3A", "petals"));
         }
 
-        if (containsAny(lower, "vela", "velas", "candle", "cumpleaños", "cumpleanos")) {
-            assets.add(requiredAsset(
-                    "DECORATION",
-                    "candle",
-                    "birthday_candle",
-                    "birthday candle",
-                    resolveColorOrDefault(lower, "#FFD166"),
-                    "top_back",
-                    "medium",
-                    "primary"
-            ));
+        if (containsAny(text, "fresa", "fresas", "strawberry")) {
+            assets.add(asset("strawberry_topping", "TOPPING", "strawberry", "fresas frescas", nextAnchor(assets.size()), "small", "#D72638", "primary"));
         }
 
-        if (containsAny(lower, "chocolate", "salsa de chocolate", "baño de chocolate", "bano de chocolate")) {
-            assets.add(requiredAsset(
-                    "SAUCE",
-                    "chocolate",
-                    "chocolate_drizzle",
-                    "chocolate drizzle sauce",
-                    "#4B2418",
-                    "top_drizzle",
-                    "medium",
-                    "chocolate"
-            ));
+        if (containsAny(text, "arándano", "arandano", "arándanos", "arandanos", "blueberry")) {
+            assets.add(asset("blueberry_topping", "TOPPING", "blueberry", "arándanos decorativos", nextAnchor(assets.size()), "small", "#2F3E8C", "primary"));
         }
 
-        if (containsAny(lower, "crema", "nata", "cream", "copete")) {
-            assets.add(requiredAsset(
-                    "TOPPING",
-                    "cream",
-                    "cream_swirl",
-                    "cream swirl topping",
-                    "#FFF2E6",
-                    "top_center",
-                    "medium",
-                    "cream"
-            ));
+        if (containsAny(text, "cereza", "cerezas", "cherry")) {
+            assets.add(asset("cherry_topping", "TOPPING", "cherry", "cerezas decorativas", nextAnchor(assets.size()), "small", "#C9182B", "primary"));
         }
 
-        if (containsAny(lower, "chispas", "sprinkles", "grageas")) {
-            assets.add(requiredAsset(
-                    "SPRINKLES",
-                    "sprinkles",
-                    "rainbow_sprinkles",
-                    "rainbow sprinkles",
-                    null,
-                    "top_ring",
-                    "small",
-                    "primary"
-            ));
+        if (containsAny(text, "crema", "chantilly", "nata")) {
+            assets.add(asset("cream_swirl", "TOPPING", "cream", "remolino de crema", nextAnchor(assets.size()), "small", "#FFF2E6", "cream"));
+        }
+
+        if (containsAny(text, "vela", "cumpleaños", "cumpleanos", "birthday")) {
+            assets.add(asset("birthday_candle", "DECORATION", "candle", "vela de cumpleaños", nextAnchor(assets.size()), "small", "#F2C94C", "primary"));
+        }
+
+        if (containsAny(text, "macaron", "macarron", "macarrón")) {
+            assets.add(asset("macaron_topping", "TOPPING", "macaron", "macaron decorativo", nextAnchor(assets.size()), "small", "#FFD6E7", "primary"));
+        }
+
+        if (containsAny(text, "dragón", "dragon")) {
+            assets.add(asset("golden_dragon_topper", "DECORATION", "dragon", "golden dragon cake topper", "top_center", "medium", "#D4AF37", "primary"));
         }
 
         return assets;
     }
 
-    private Map<String, Object> requiredAsset(
-            String category,
-            String type,
-            String assetKey,
-            String query,
-            String color,
-            String anchor,
-            String relativeSize,
-            String materialTarget
-    ) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("category", category);
-        item.put("type", type);
-        item.put("assetKey", assetKey);
-        item.put("query", query);
-        item.put("color", color);
-        item.put("anchor", anchor);
-        item.put("relativeSize", relativeSize);
-        item.put("materialTarget", materialTarget);
-        return item;
+    private Map<String, Object> asset(String assetKey, String category, String type, String query, String anchor, String relativeSize, String color, String materialTarget) {
+        Map<String, Object> asset = new LinkedHashMap<>();
+        asset.put("assetKey", assetKey);
+        asset.put("category", category);
+        asset.put("type", type);
+        asset.put("query", query);
+        asset.put("anchor", anchor);
+        asset.put("relativeSize", relativeSize);
+        asset.put("color", color);
+        asset.put("materialTarget", materialTarget);
+        return asset;
     }
 
-    private List<Map<String, Object>> fallbackIngredients(String dessertType, List<Map<String, Object>> requiredAssets) {
+    private String nextAnchor(int index) {
+        return switch (index) {
+            case 0 -> "top_center";
+            case 1 -> "top_left";
+            case 2 -> "top_right";
+            case 3 -> "top_front";
+            default -> "top_back";
+        };
+    }
+
+    private boolean isCompleteShowcaseDessert(String dessertType) {
+        return List.of("flan", "chocolate_cake", "strawberry_cake", "donut", "ice_cream").contains(dessertType);
+    }
+
+    private String titleForDessert(String dessertType, String prompt) {
+        return switch (dessertType) {
+            case "flan" -> "Flan napolitano clásico";
+            case "chocolate_cake" -> "Pastel de chocolate intenso";
+            case "strawberry_cake" -> "Pastel de fresa decorado";
+            case "donut" -> "Dona glaseada artesanal";
+            case "ice_cream" -> "Copa de helado cremosa";
+            case "milhojas" -> "Milhojas clásica de crema";
+            case "cupcake" -> "Cupcake decorado de vainilla";
+            case "cheesecake" -> "Cheesecake suave tradicional";
+            case "tart" -> "Tarta dulce de vainilla";
+            default -> "Pastel redondo personalizado";
+        };
+    }
+
+    private String descriptionForDessert(String dessertType) {
+        return switch (dessertType) {
+            case "flan" -> "Postre cremoso de huevo, leche y caramelo, con textura suave y sabor tradicional.";
+            case "chocolate_cake" -> "Pastel húmedo de chocolate con sabor profundo a cacao y presentación elegante.";
+            case "strawberry_cake" -> "Pastel suave con notas de fresa, ideal para una presentación fresca y llamativa.";
+            case "donut" -> "Dona esponjosa con glaseado brillante, pensada para una preparación sencilla y vistosa.";
+            case "ice_cream" -> "Copa fría y cremosa con textura suave, ideal como postre rápido y visualmente atractivo.";
+            case "milhojas" -> "Capas crujientes de hojaldre con crema suave, equilibrando textura y dulzor.";
+            default -> "Postre personalizado generado a partir del pedido del usuario.";
+        };
+    }
+
+    private int estimatedMinutes(String dessertType) {
+        return switch (dessertType) {
+            case "flan" -> 90;
+            case "chocolate_cake", "strawberry_cake" -> 75;
+            case "donut" -> 120;
+            case "ice_cream" -> 240;
+            case "milhojas" -> 80;
+            case "cupcake" -> 45;
+            case "cheesecake" -> 120;
+            default -> 60;
+        };
+    }
+
+    private List<Map<String, Object>> fallbackIngredients(String dessertType) {
         List<Map<String, Object>> ingredients = new ArrayList<>();
 
         switch (dessertType) {
+            case "flan" -> {
+                ingredients.add(ingredient("Huevos", "5", "unidades"));
+                ingredients.add(ingredient("Leche condensada", "395", "g"));
+                ingredients.add(ingredient("Leche evaporada", "360", "ml"));
+                ingredients.add(ingredient("Queso crema", "180", "g"));
+                ingredients.add(ingredient("Azúcar para caramelo", "120", "g"));
+                ingredients.add(ingredient("Vainilla", "1", "cucharadita"));
+            }
+            case "chocolate_cake" -> {
+                ingredients.add(ingredient("Harina de trigo", "220", "g"));
+                ingredients.add(ingredient("Cacao en polvo", "60", "g"));
+                ingredients.add(ingredient("Azúcar morena", "180", "g"));
+                ingredients.add(ingredient("Huevos", "3", "unidades"));
+                ingredients.add(ingredient("Leche", "180", "ml"));
+                ingredients.add(ingredient("Mantequilla derretida", "120", "g"));
+                ingredients.add(ingredient("Polvo de hornear", "10", "g"));
+            }
+            case "strawberry_cake" -> {
+                ingredients.add(ingredient("Harina de trigo", "230", "g"));
+                ingredients.add(ingredient("Fresas trituradas", "160", "g"));
+                ingredients.add(ingredient("Azúcar", "170", "g"));
+                ingredients.add(ingredient("Huevos", "3", "unidades"));
+                ingredients.add(ingredient("Yogur natural", "120", "g"));
+                ingredients.add(ingredient("Mantequilla", "110", "g"));
+            }
+            case "donut" -> {
+                ingredients.add(ingredient("Harina de fuerza", "300", "g"));
+                ingredients.add(ingredient("Levadura seca", "7", "g"));
+                ingredients.add(ingredient("Leche tibia", "160", "ml"));
+                ingredients.add(ingredient("Azúcar", "45", "g"));
+                ingredients.add(ingredient("Mantequilla", "45", "g"));
+                ingredients.add(ingredient("Huevo", "1", "unidad"));
+            }
+            case "ice_cream" -> {
+                ingredients.add(ingredient("Crema de leche", "400", "ml"));
+                ingredients.add(ingredient("Leche condensada", "250", "g"));
+                ingredients.add(ingredient("Vainilla", "1", "cucharadita"));
+                ingredients.add(ingredient("Fruta o salsa al gusto", "100", "g"));
+            }
             case "milhojas" -> {
-                ingredients.add(ingredient("Láminas de hojaldre", "3", "unidades"));
-                ingredients.add(ingredient("Leche entera", "500", "ml"));
-                ingredients.add(ingredient("Yemas de huevo", "4", "unidades"));
+                ingredients.add(ingredient("Masa de hojaldre", "500", "g"));
+                ingredients.add(ingredient("Leche", "500", "ml"));
+                ingredients.add(ingredient("Yemas", "4", "unidades"));
                 ingredients.add(ingredient("Azúcar", "120", "g"));
                 ingredients.add(ingredient("Maicena", "40", "g"));
-                ingredients.add(ingredient("Esencia de vainilla", "1", "cdta"));
-                ingredients.add(ingredient("Azúcar pulverizada", "30", "g"));
-            }
-            case "cheesecake" -> {
-                ingredients.add(ingredient("Galletas trituradas", "180", "g"));
-                ingredients.add(ingredient("Mantequilla derretida", "80", "g"));
-                ingredients.add(ingredient("Queso crema", "450", "g"));
-                ingredients.add(ingredient("Azúcar", "140", "g"));
-                ingredients.add(ingredient("Huevos", "3", "unidades"));
-                ingredients.add(ingredient("Crema de leche", "120", "ml"));
-            }
-            case "cupcake" -> {
-                ingredients.add(ingredient("Harina de trigo", "180", "g"));
-                ingredients.add(ingredient("Azúcar", "140", "g"));
-                ingredients.add(ingredient("Huevos", "2", "unidades"));
-                ingredients.add(ingredient("Mantequilla", "90", "g"));
-                ingredients.add(ingredient("Leche", "100", "ml"));
-                ingredients.add(ingredient("Polvo de hornear", "1", "cdta"));
-            }
-            case "brownie" -> {
-                ingredients.add(ingredient("Chocolate semiamargo", "180", "g"));
-                ingredients.add(ingredient("Mantequilla", "120", "g"));
-                ingredients.add(ingredient("Azúcar", "180", "g"));
-                ingredients.add(ingredient("Huevos", "3", "unidades"));
-                ingredients.add(ingredient("Harina", "90", "g"));
-                ingredients.add(ingredient("Cacao en polvo", "25", "g"));
+                ingredients.add(ingredient("Vainilla", "1", "cucharadita"));
             }
             default -> {
-                ingredients.add(ingredient("Harina de trigo", "250", "g"));
-                ingredients.add(ingredient("Azúcar", "180", "g"));
+                ingredients.add(ingredient("Harina de trigo", "220", "g"));
+                ingredients.add(ingredient("Azúcar", "160", "g"));
                 ingredients.add(ingredient("Huevos", "3", "unidades"));
-                ingredients.add(ingredient("Mantequilla", "120", "g"));
                 ingredients.add(ingredient("Leche", "160", "ml"));
-                ingredients.add(ingredient("Polvo de hornear", "1", "cdta"));
-                ingredients.add(ingredient("Esencia de vainilla", "1", "cdta"));
+                ingredients.add(ingredient("Mantequilla", "110", "g"));
+                ingredients.add(ingredient("Polvo de hornear", "10", "g"));
             }
-        }
-
-        if (containsAssetType(requiredAssets, "rose")) {
-            ingredients.add(ingredient("Caramelo moldeable o fondant para rosa", "80", "g"));
-        }
-
-        if (containsAssetType(requiredAssets, "strawberry")) {
-            ingredients.add(ingredient("Fresas frescas", "120", "g"));
-        }
-
-        if (containsAssetType(requiredAssets, "chocolate")) {
-            ingredients.add(ingredient("Chocolate para cobertura", "100", "g"));
-        }
-
-        if (containsAssetType(requiredAssets, "cream")) {
-            ingredients.add(ingredient("Crema para batir", "150", "ml"));
         }
 
         return ingredients;
     }
 
-    private List<Map<String, Object>> fallbackSteps(String dessertType, List<Map<String, Object>> requiredAssets) {
+    private List<Map<String, Object>> fallbackSteps(String dessertType) {
         List<Map<String, Object>> steps = new ArrayList<>();
-
-        if ("milhojas".equals(dessertType)) {
-            steps.add(step(1, "Hornear el hojaldre", "Cortar las láminas de hojaldre al tamaño deseado, pincharlas con un tenedor y hornear hasta que estén doradas y crujientes."));
-            steps.add(step(2, "Preparar la crema pastelera", "Calentar la leche con vainilla. Aparte, mezclar yemas, azúcar y maicena. Integrar la leche caliente y cocinar hasta espesar."));
-            steps.add(step(3, "Enfriar la crema", "Cubrir la crema con plástico en contacto y dejar enfriar para que mantenga buena textura al montar."));
-            steps.add(step(4, "Montar las capas", "Alternar capas de hojaldre con crema pastelera, presionando suavemente para mantener estabilidad."));
-        } else {
-            steps.add(step(1, "Preparar la base", "Mezclar los ingredientes secos y luego integrar los ingredientes húmedos hasta obtener una mezcla homogénea."));
-            steps.add(step(2, "Hornear", "Verter la preparación en el molde adecuado y hornear hasta que el centro esté firme."));
-            steps.add(step(3, "Enfriar", "Dejar enfriar completamente antes de decorar para evitar que la cobertura se derrita o pierda forma."));
-        }
-
-        if (containsAssetType(requiredAssets, "rose")) {
-            steps.add(step(steps.size() + 1, "Crear la rosa decorativa", "Formar pétalos delgados con caramelo moldeable o fondant y ensamblarlos desde el centro hacia afuera."));
-        }
-
-        if (containsAssetType(requiredAssets, "strawberry")) {
-            steps.add(step(steps.size() + 1, "Preparar las fresas", "Lavar, secar y cortar las fresas para usarlas como decoración superior."));
-        }
-
-        if (containsAssetType(requiredAssets, "chocolate")) {
-            steps.add(step(steps.size() + 1, "Agregar chocolate", "Fundir el chocolate y aplicarlo como líneas o baño ligero sobre la superficie."));
-        }
-
-        if (containsAssetType(requiredAssets, "cream")) {
-            steps.add(step(steps.size() + 1, "Aplicar crema", "Batir la crema hasta formar picos firmes y decorar con manga pastelera."));
-        }
-
-        steps.add(step(steps.size() + 1, "Presentar", "Ubicar las decoraciones según el diseño visual y servir cuando la estructura esté estable."));
-
+        steps.add(step("Preparar la base", "Organizar ingredientes, precalentar el horno o preparar el molde según el tipo de postre."));
+        steps.add(step("Mezclar", "Integrar los ingredientes secos y líquidos hasta obtener una mezcla homogénea y estable."));
+        steps.add(step("Cocinar o enfriar", "Hornear, cocinar a baño María, freír o congelar según corresponda al postre."));
+        steps.add(step("Reposar", "Dejar enfriar o estabilizar para mejorar textura, corte y presentación."));
+        steps.add(step("Decorar", "Agregar toppings o acabados visuales justo antes de servir para conservar textura y volumen."));
         return steps;
     }
 
-    private List<String> fallbackLearningTips(String dessertType) {
-        if ("milhojas".equals(dessertType)) {
-            return List.of(
-                    "El hojaldre debe estar bien horneado para que no pierda textura con la crema.",
-                    "La crema pastelera debe enfriarse antes del montaje.",
-                    "Una decoración pequeña encima evita que la milhojas pierda proporción visual."
-            );
-        }
-
-        return List.of(
-                "Dejar enfriar la base antes de decorar mejora el acabado.",
-                "La proporción entre base y topping ayuda a que el postre se vea equilibrado.",
-                "Los colores de decoración deben contrastar con la base para destacar visualmente."
-        );
-    }
-
     private Map<String, Object> ingredient(String name, String quantity, String unit) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("name", name);
-        item.put("quantity", quantity);
-        item.put("unit", unit);
-        return item;
+        Map<String, Object> ingredient = new LinkedHashMap<>();
+        ingredient.put("name", name);
+        ingredient.put("quantity", quantity);
+        ingredient.put("unit", unit);
+        return ingredient;
     }
 
-    private Map<String, Object> step(int order, String title, String description) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("order", order);
-        item.put("title", title);
-        item.put("description", description);
-        return item;
+    private Map<String, Object> step(String title, String description) {
+        Map<String, Object> step = new LinkedHashMap<>();
+        step.put("title", title);
+        step.put("description", description);
+        return step;
     }
 
-    private String buildTitle(String dessertType, List<Map<String, Object>> requiredAssets) {
-        String base = switch (dessertType) {
-            case "milhojas" -> "Milhojas clásica";
-            case "cupcake" -> "Cupcake artesanal";
-            case "cheesecake" -> "Cheesecake cremoso";
-            case "tart" -> "Tarta artesanal";
-            case "brownie" -> "Brownie intenso de chocolate";
-            case "cookie" -> "Galleta decorada";
-            case "donut" -> "Dona decorada";
-            case "macaron" -> "Macaron francés";
-            case "tiramisu" -> "Tiramisú clásico";
-            case "flan" -> "Flan suave";
-            case "alfajor" -> "Alfajor artesanal";
-            case "tres_leches" -> "Pastel tres leches";
-            case "round_cake" -> "Pastel redondo";
-            default -> "Postre personalizado";
-        };
-
-        if (containsAssetType(requiredAssets, "rose")) {
-            return base + " con rosa decorativa";
-        }
-
-        if (containsAssetType(requiredAssets, "strawberry")) {
-            return base + " con fresas";
-        }
-
-        if (containsAssetType(requiredAssets, "chocolate")) {
-            return base + " con chocolate";
-        }
-
-        return base;
+    private String buildModelPrompt(String userPrompt, String dessertType) {
+        return "clean centered 3D GLB asset of " + dessertType + " based on this request: " + userPrompt + ". No plate, no hands, no text, no background, single object, realistic pastry material.";
     }
 
-    private String buildDescription(String dessertType, List<Map<String, Object>> requiredAssets) {
-        String base = switch (dessertType) {
-            case "milhojas" -> "Postre de hojaldre crujiente con capas de crema pastelera, pensado para una presentación elegante.";
-            case "cheesecake" -> "Postre cremoso con base de galleta y textura suave, ideal para decorar con elementos superiores.";
-            case "brownie" -> "Postre de chocolate denso y húmedo, con superficie firme para decoraciones pequeñas.";
-            default -> "Postre personalizado generado para aprendizaje de repostería y visualización 3D.";
-        };
-
-        if (!requiredAssets.isEmpty()) {
-            return base + " Incluye decoración personalizada según el pedido del usuario.";
-        }
-
-        return base;
-    }
-
-    private Integer defaultServings(String dessertType) {
-        return switch (dessertType) {
-            case "cupcake", "macaron", "donut", "alfajor" -> 6;
-            case "milhojas", "brownie", "tart" -> 8;
-            default -> 10;
-        };
-    }
-
-    private String defaultDifficulty(String dessertType) {
-        return switch (dessertType) {
-            case "milhojas", "macaron", "tiramisu" -> "ADVANCED";
-            case "cheesecake", "tart", "brownie" -> "INTERMEDIATE";
-            default -> "BEGINNER";
-        };
-    }
-
-    private Integer defaultMinutes(String dessertType) {
-        return switch (dessertType) {
-            case "milhojas" -> 120;
-            case "cheesecake" -> 150;
-            case "macaron" -> 140;
-            case "tiramisu" -> 180;
-            case "brownie" -> 60;
-            default -> 90;
-        };
-    }
-
-    private String buildModelPrompt(String rawPrompt, String dessertType, List<Map<String, Object>> requiredAssets) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("Clean centered ")
-                .append(dessertType.replace("_", " "))
-                .append(" dessert asset composition");
-
-        if (!requiredAssets.isEmpty()) {
-            builder.append(" with ");
-            List<String> names = requiredAssets.stream()
-                    .map(asset -> String.valueOf(asset.getOrDefault("type", "decoration")))
-                    .toList();
-            builder.append(String.join(", ", names));
-        }
-
-        builder.append(". GLB friendly, no plate, no background. User request: ");
-        builder.append(rawPrompt == null ? "" : rawPrompt);
-
-        return builder.toString();
-    }
-
-    private List<String> buildKeywords(String dessertType, List<Map<String, Object>> requiredAssets) {
-        List<String> keywords = new ArrayList<>();
-        keywords.add("dessert");
-        keywords.add(dessertType);
-
-        for (Map<String, Object> asset : requiredAssets) {
-            Object type = asset.get("type");
-            Object assetKey = asset.get("assetKey");
-
-            if (type != null) {
-                keywords.add(type.toString());
+    private Map<String, Object> mapValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> converted = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                converted.put(String.valueOf(entry.getKey()), entry.getValue());
             }
-
-            if (assetKey != null) {
-                keywords.add(assetKey.toString());
-            }
+            return converted;
         }
-
-        return keywords;
+        return new LinkedHashMap<>();
     }
 
-    private String resolveColor(String lower) {
-        if (containsAny(lower, "azul", "blue")) {
-            return "#2F80ED";
+    private String stringValue(Object value, String fallback) {
+        if (value == null) {
+            return fallback;
         }
 
-        if (containsAny(lower, "roja", "rojo", "red")) {
-            return "#C92A3A";
+        String text = value.toString();
+
+        if (text.isBlank()) {
+            return fallback;
         }
 
-        if (containsAny(lower, "rosada", "rosado", "pink", "color rosa")) {
-            return "#FFD6E7";
-        }
-
-        if (containsAny(lower, "amarilla", "amarillo", "yellow")) {
-            return "#FFD166";
-        }
-
-        if (containsAny(lower, "verde", "green")) {
-            return "#2A7F62";
-        }
-
-        if (containsAny(lower, "morada", "morado", "purple", "violeta")) {
-            return "#7B2CBF";
-        }
-
-        if (containsAny(lower, "blanca", "blanco", "white")) {
-            return "#FFFFFF";
-        }
-
-        if (containsAny(lower, "negra", "negro", "black")) {
-            return "#1F1F1F";
-        }
-
-        if (containsAny(lower, "chocolate", "café", "cafe", "brown")) {
-            return "#4B2418";
-        }
-
-        return "#C92A3A";
-    }
-
-    private String resolveColorOrDefault(String lower, String fallback) {
-        String color = resolveColor(lower);
-        return color == null || color.isBlank() ? fallback : color;
-    }
-
-    private boolean containsAssetType(List<Map<String, Object>> assets, String type) {
-        return assets.stream()
-                .anyMatch(asset -> type.equals(String.valueOf(asset.get("type"))));
+        return text;
     }
 
     private boolean containsAny(String text, String... values) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-
         for (String value : values) {
-            if (text.contains(value.toLowerCase(Locale.ROOT))) {
+            if (text.contains(value)) {
                 return true;
             }
         }
-
         return false;
     }
 }

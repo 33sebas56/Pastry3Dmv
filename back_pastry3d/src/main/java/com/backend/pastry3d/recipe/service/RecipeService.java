@@ -380,13 +380,14 @@ public class RecipeService {
 
     private Map<String, Object> defaultPosition(String anchor) {
         return switch (anchor) {
-            case "top_left" -> Map.of("x", -0.65, "y", 1.15, "z", 0.0);
-            case "top_right" -> Map.of("x", 0.65, "y", 1.15, "z", 0.0);
-            case "top_ring" -> Map.of("x", 0.45, "y", 1.15, "z", 0.0);
-            case "top_back" -> Map.of("x", 0.0, "y", 1.35, "z", -0.35);
-            case "side_front" -> Map.of("x", 0.0, "y", 0.65, "z", 0.85);
-            case "top_drizzle" -> Map.of("x", 0.0, "y", 1.18, "z", 0.0);
-            default -> Map.of("x", 0.0, "y", 1.15, "z", 0.0);
+            case "top_left" -> Map.of("x", -0.42, "y", 0.78, "z", 0.12);
+            case "top_right" -> Map.of("x", 0.42, "y", 0.78, "z", 0.12);
+            case "top_front" -> Map.of("x", 0.0, "y", 0.78, "z", 0.42);
+            case "top_back" -> Map.of("x", 0.0, "y", 0.78, "z", -0.42);
+            case "top_ring" -> Map.of("x", 0.45, "y", 0.78, "z", 0.0);
+            case "side_front" -> Map.of("x", 0.0, "y", 0.48, "z", 0.82);
+            case "top_drizzle" -> Map.of("x", 0.0, "y", 0.80, "z", 0.0);
+            default -> Map.of("x", 0.0, "y", 0.78, "z", 0.0);
         };
     }
 
@@ -398,13 +399,13 @@ public class RecipeService {
         double baseScale;
 
         if (AppConstants.CATEGORY_DECORATION.equals(category)) {
-            baseScale = 0.35;
+            baseScale = 0.28;
         } else if (AppConstants.CATEGORY_SAUCE.equals(category)) {
-            baseScale = 0.9;
+            baseScale = 0.72;
         } else if (AppConstants.CATEGORY_SPRINKLES.equals(category)) {
-            baseScale = 0.8;
+            baseScale = 0.62;
         } else {
-            baseScale = 0.4;
+            baseScale = 0.30;
         }
 
         if ("large".equalsIgnoreCase(relativeSize)) {
