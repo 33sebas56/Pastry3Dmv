@@ -1,0 +1,73 @@
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# IntelliJ / IDE
+# =========================
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# =========================
+# Java / Maven / Spring
+# =========================
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Maven wrapper jar can be regenerated/downloaded
+**/.mvn/wrapper/maven-wrapper.jar
+
+# =========================
+# Node / Vite / React
+# =========================
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
+**/dist-ssr/
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Local database / temp
+# =========================
+*.sqlite
+*.db
+tmp/
+temp/
+
+# =========================
+# Model backups / raw downloads
+# =========================
+modelos_originales/
+modelos_backup/
+*.zip
+
+# IMPORTANTE:
+# No se ignoran los GLB oficiales de demo porque decidiste subirlos al repo.
+# Ruta esperada:
+# back_pastry3d/uploads/models/demo/*.glb
