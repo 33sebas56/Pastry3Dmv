@@ -3,6 +3,22 @@ import { apiClient, clearToken, getToken, setToken } from "../api/apiClient";
 
 const AuthContext = createContext(null);
 
+function normalizeRegisterPayload(displayNameOrPayload, email, password) {
+  if (
+    displayNameOrPayload &&
+    typeof displayNameOrPayload === "object" &&
+    !Array.isArray(displayNameOrPayload)
+  ) {
+    return displayNameOrPayload;
+  }
+
+  return {
+    displayName: displayNameOrPayload,
+    email,
+    password,
+  };
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(apiClient.getStoredUser());
   const [loading, setLoading] = useState(true);
@@ -62,16 +78,13 @@ export function AuthProvider({ children }) {
     return currentUser;
   }
 
-  async function register(payload) {
+  async function register(displayNameOrPayload, email, password) {
     setAuthError("");
+
+    const payload = normalizeRegisterPayload(displayNameOrPayload, email, password);
 
     const response = await apiClient.register(payload);
 
-    /*
-      Caso normal con SMTP activo:
-      El backend crea el usuario, manda correo y devuelve token=null / enabled=false.
-      En ese caso NO debemos llamar /auth/me todavía.
-    */
     if (!response?.token || response?.enabled === false) {
       clearToken();
       apiClient.clearStoredUser();
