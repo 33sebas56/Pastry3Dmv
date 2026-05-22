@@ -152,8 +152,23 @@ export default function RecipeResult({ result }) {
             <strong>Job de generación 3D</strong>
             <p>Estado: {generationJob.status}</p>
 
+            {generationJob.status === "FAILED" && (
+              <div className="error-box large">
+                <strong>No se pudo generar el modelo con el proveedor externo.</strong>
+                <p>
+                  {generationJob.errorMessage ||
+                    "El proveedor respondió con error, pero no devolvió un mensaje detallado."}
+                </p>
+              </div>
+            )}
+
             {generationJob.modelAssetId ? (
               <p>Modelo generado y guardado en la biblioteca.</p>
+            ) : generationJob.status === "FAILED" ? (
+              <p>
+                La arquitectura de generación quedó preparada, pero el proveedor externo rechazó la solicitud.
+                Revisa el endpoint 3D real en el dashboard de FairStack antes de volver a intentar.
+              </p>
             ) : (
               <p>
                 La generación fue enviada. Si el modelo aún no aparece, sincroniza el estado en unos segundos.
