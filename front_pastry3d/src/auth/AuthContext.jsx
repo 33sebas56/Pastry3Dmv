@@ -19,6 +19,21 @@ function normalizeRegisterPayload(displayNameOrPayload, email, password) {
   };
 }
 
+function normalizeLoginPayload(emailOrPayload, password) {
+  if (
+    emailOrPayload &&
+    typeof emailOrPayload === "object" &&
+    !Array.isArray(emailOrPayload)
+  ) {
+    return emailOrPayload;
+  }
+
+  return {
+    email: emailOrPayload,
+    password,
+  };
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(apiClient.getStoredUser());
   const [loading, setLoading] = useState(true);
@@ -63,10 +78,12 @@ export function AuthProvider({ children }) {
     bootstrap();
   }, []);
 
-  async function login(credentials) {
+  async function login(emailOrPayload, password) {
     setAuthError("");
 
-    const response = await apiClient.login(credentials);
+    const payload = normalizeLoginPayload(emailOrPayload, password);
+
+    const response = await apiClient.login(payload);
 
     if (!response?.token) {
       throw new Error("No se recibió token de autenticación");
