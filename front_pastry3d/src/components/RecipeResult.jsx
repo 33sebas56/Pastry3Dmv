@@ -1,4 +1,6 @@
-import { BookOpen, Clock, PackageSearch, Users } from "lucide-react";
+import { useState } from "react";
+import { BookOpen, Clock, PackageSearch, Sparkles, Users } from "lucide-react";
+import { apiClient } from "../api/apiClient";
 import SceneViewer from "./SceneViewer";
 import StatusBadge from "./StatusBadge";
 
@@ -24,7 +26,20 @@ function readSteps(recipe) {
   return steps;
 }
 
+function canGenerateFromScratch(result, missingAssets) {
+  return (
+    result?.recipeId &&
+    result?.status === "PENDING_MANUAL_MODEL" &&
+    Array.isArray(missingAssets) &&
+    missingAssets.length > 0
+  );
+}
+
 export default function RecipeResult({ result }) {
+  const [generationJob, setGenerationJob] = useState(null);
+  const [generationLoading, setGenerationLoading] = useState(false);
+  const [generationError, setGenerationError] = useState("");
+
   if (!result) {
     return (
       <section className="panel empty-result">
@@ -40,6 +55,43 @@ export default function RecipeResult({ result }) {
   const missingAssets = parseJson(result.missingAssetsJson, []);
   const ingredients = readIngredients(recipe);
   const steps = readSteps(recipe);
+  const showGenerateButton = canGenerateFromScratch(result, missingAssets);
+
+  async function handleGenerateFromScratch() {
+    const confirmed = window.confirm(
+      "Esto enviará el prompt a FairStack para generar un modelo 3D desde cero. Puede consumir créditos. ¿Continuar?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setGenerationLoading(true);
+      setGenerationError("");
+
+      const response = await apiClient.startFairStackGeneration(result.recipeId);
+      setGenerationJob(response);
+    } catch (err) {
+      setGenerationError(err.message || "No se pudo iniciar la generación con FairStack");
+    } finally {
+      setGenerationLoading(false);
+    }
+  }
+
+  async function handleSyncJob() {
+    if (!generationJob?.id) return;
+
+    try {
+      setGenerationLoading(true);
+      setGenerationError("");
+
+      const response = await apiClient.syncGenerationJob(generationJob.id);
+      setGenerationJob(response);
+    } catch (err) {
+      setGenerationError(err.message || "No se pudo sincronizar el job de generación");
+    } finally {
+      setGenerationLoading(false);
+    }
+  }
 
   return (
     <section className="result-grid">
@@ -49,7 +101,7 @@ export default function RecipeResult({ result }) {
             <p className="eyebrow">Resultado</p>
             <h2>{result.title || recipe.title || "Receta generada"}</h2>
           </div>
-          <StatusBadge status={result.status} />
+          <StatusBadge status={generationJob?.status || result.status} />
         </div>
 
         <div className="recipe-meta">
@@ -75,7 +127,47 @@ export default function RecipeResult({ result }) {
             <div>
               <strong>Faltan modelos para completar la escena</strong>
               <p>{missingAssets.join(", ")}</p>
+
+              {showGenerateButton && (
+                <div className="generation-actions">
+                  <button
+                    className="primary-button small"
+                    type="button"
+                    onClick={handleGenerateFromScratch}
+                    disabled={generationLoading}
+                  >
+                    <Sparkles size={17} />
+                    {generationLoading ? "Enviando a FairStack..." : "Generar desde cero"}
+                  </button>
+                </div>
+              )}
             </div>
+          </div>
+        )}
+
+        {generationError && <div className="error-box large">{generationError}</div>}
+
+        {generationJob && (
+          <div className="generation-box">
+            <strong>Job de generación 3D</strong>
+            <p>Estado: {generationJob.status}</p>
+
+            {generationJob.modelAssetId ? (
+              <p>Modelo generado y guardado en la biblioteca.</p>
+            ) : (
+              <p>
+                La generación fue enviada. Si el modelo aún no aparece, sincroniza el estado en unos segundos.
+              </p>
+            )}
+
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={handleSyncJob}
+              disabled={generationLoading || !generationJob.id}
+            >
+              {generationLoading ? "Consultando..." : "Sincronizar generación"}
+            </button>
           </div>
         )}
 
@@ -123,7 +215,7 @@ export default function RecipeResult({ result }) {
             <h2>Composición visual</h2>
           </div>
         </div>
-        <SceneViewer sceneJson={result.sceneJson} modelUrl={result.modelUrl} status={result.status} />
+        <SceneViewer sceneJson={result.sceneJson} modelUrl={result.modelUrl} status={generationJob?.status || result.status} />
       </div>
     </section>
   );

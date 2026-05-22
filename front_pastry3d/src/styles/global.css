@@ -634,3 +634,25 @@ textarea:focus {
     align-self: stretch;
   }
 }
+.primary-button.small {
+  padding: 0.65rem 0.9rem;
+  border-radius: 14px;
+  font-size: 0.9rem;
+}
+
+.generation-actions {
+  margin-top: 0.85rem;
+}
+
+.generation-box {
+  border: 1px solid #d8c3ff;
+  background: #f5efff;
+  color: #3f286b;
+  border-radius: 18px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.generation-box p {
+  margin: 0.35rem 0 0.8rem;
+}

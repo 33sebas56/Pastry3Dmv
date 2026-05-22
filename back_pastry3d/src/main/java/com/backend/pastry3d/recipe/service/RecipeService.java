@@ -5,7 +5,6 @@ import com.backend.pastry3d.auth.entity.User;
 import com.backend.pastry3d.composition.entity.RecipeComposition;
 import com.backend.pastry3d.composition.repository.RecipeCompositionRepository;
 import com.backend.pastry3d.composition.service.CompositionService;
-import com.backend.pastry3d.generation.entity.GenerationJob;
 import com.backend.pastry3d.generation.service.GenerationJobService;
 import com.backend.pastry3d.modelasset.entity.ModelAsset;
 import com.backend.pastry3d.modelasset.repository.ModelAssetRepository;
@@ -18,7 +17,6 @@ import com.backend.pastry3d.shared.exception.BadRequestException;
 import com.backend.pastry3d.shared.exception.ResourceNotFoundException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,7 +37,6 @@ public class RecipeService {
     private final GeminiClient geminiClient;
     private final GenerationJobService generationJobService;
     private final ObjectMapper objectMapper;
-    private final boolean fairStackEnabled;
 
     public RecipeService(
             RecipeRepository recipeRepository,
@@ -48,8 +45,7 @@ public class RecipeService {
             CompositionService compositionService,
             GeminiClient geminiClient,
             GenerationJobService generationJobService,
-            ObjectMapper objectMapper,
-            @Value("${fairstack.enabled:false}") boolean fairStackEnabled
+            ObjectMapper objectMapper
     ) {
         this.recipeRepository = recipeRepository;
         this.recipeCompositionRepository = recipeCompositionRepository;
@@ -58,11 +54,14 @@ public class RecipeService {
         this.geminiClient = geminiClient;
         this.generationJobService = generationJobService;
         this.objectMapper = objectMapper;
-        this.fairStackEnabled = fairStackEnabled;
     }
 
     @Transactional
     public RecipeGenerateResponse generateRecipe(String prompt, User user) {
+        if (prompt == null || prompt.isBlank()) {
+            throw new BadRequestException("El prompt de la receta es obligatorio");
+        }
+
         Map<String, Object> plan = geminiClient.generateRecipePlan(prompt);
         Map<String, Object> recipeMap = castMap(plan.get("recipe"));
         Map<String, Object> visualPlan = castMap(plan.get("visualPlan"));
@@ -83,6 +82,7 @@ public class RecipeService {
         Recipe savedRecipe = recipeRepository.save(recipe);
 
         RecipeComposition composition = buildComposition(savedRecipe, visualPlan);
+
         savedRecipe.setStatus(composition.getStatus());
         recipeRepository.save(savedRecipe);
 
@@ -97,6 +97,7 @@ public class RecipeService {
     @Transactional(readOnly = true)
     public RecipeDetailResponse getDetail(Long id, Long userId) {
         Recipe recipe = getOwnedRecipe(id, userId);
+
         RecipeComposition composition = recipeCompositionRepository
                 .findTopByRecipeIdOrderByCreatedAtDesc(recipe.getId())
                 .orElse(null);
@@ -138,6 +139,7 @@ public class RecipeService {
         Map<String, Object> visualPlan = readMap(recipe.getVisualPlanJson());
 
         RecipeComposition composition = buildComposition(recipe, visualPlan);
+
         recipe.setStatus(composition.getStatus());
         recipeRepository.save(recipe);
 
@@ -230,7 +232,8 @@ public class RecipeService {
 
         if (assetKey != null && !assetKey.isBlank()) {
             Optional<ModelAsset> exact = modelAssetRepository.findByAssetKey(assetKey);
-            if (exact.isPresent()) {
+
+            if (exact.isPresent() && AppConstants.STATUS_READY.equals(exact.get().getStatus())) {
                 return exact;
             }
         }
@@ -238,7 +241,8 @@ public class RecipeService {
         String category = stringValue(required.get("category"), AppConstants.CATEGORY_TOPPING);
         String type = stringValue(required.get("type"), "");
         String query = stringValue(required.get("query"), "");
-        String textToMatch = (assetKey + " " + type + " " + query).toLowerCase();
+
+        String textToMatch = (safeText(assetKey) + " " + type + " " + query).toLowerCase();
 
         List<ModelAsset> candidates = modelAssetRepository.findByCategoryAndStatusOrderByQualityScoreDesc(
                 category,
@@ -269,7 +273,8 @@ public class RecipeService {
                 safeText(asset.getAssetKey()) + " "
                         + safeText(asset.getName()) + " "
                         + safeText(asset.getTags()) + " "
-                        + safeText(asset.getDessertType())
+                        + safeText(asset.getDessertType()) + " "
+                        + safeText(asset.getCategory())
         ).toLowerCase();
 
         int score = 0;
@@ -323,7 +328,7 @@ public class RecipeService {
         Map<String, Object> overrides = new LinkedHashMap<>();
         overrides.put(materialTarget, color);
 
-        if (!"primary".equals(materialTarget)) {
+        if (!"primary".equalsIgnoreCase(materialTarget)) {
             overrides.put("primary", color);
         }
 
@@ -346,24 +351,14 @@ public class RecipeService {
             return "chocolate";
         }
 
+        if (type.contains("candle") || type.contains("vela") || assetKey.contains("candle")) {
+            return "primary";
+        }
+
         return "primary";
     }
 
     private RecipeComposition handleMissingAssets(Recipe recipe, List<String> missing) {
-        if (fairStackEnabled) {
-            GenerationJob job = generationJobService.startFairStackJob(recipe.getId(), recipe.getModelPrompt());
-
-            RecipeComposition composition = compositionService.createPendingManualComposition(
-                    recipe.getId(),
-                    safeJson(missing)
-            );
-
-            composition.setStrategy(AppConstants.STRATEGY_GENERATE_NEW_MODEL);
-            composition.setStatus(job.getStatus());
-
-            return recipeCompositionRepository.save(composition);
-        }
-
         generationJobService.createPendingManualJob(recipe.getId(), recipe.getModelPrompt());
 
         return compositionService.createPendingManualComposition(
