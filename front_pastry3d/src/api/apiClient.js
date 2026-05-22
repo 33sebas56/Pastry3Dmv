@@ -13,11 +13,25 @@ function normalizePath(path) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
-function getStoredToken() {
+function getApiOrigin() {
+  if (!API_BASE_URL) return "";
+
+  if (API_BASE_URL.startsWith("http://") || API_BASE_URL.startsWith("https://")) {
+    try {
+      return new URL(API_BASE_URL).origin;
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
+
+export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-function setStoredToken(token) {
+export function setToken(token) {
   if (!token) {
     localStorage.removeItem(TOKEN_KEY);
     return;
@@ -26,11 +40,11 @@ function setStoredToken(token) {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
-function clearStoredToken() {
+export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-function getStoredUser() {
+export function getStoredUser() {
   const raw = localStorage.getItem(USER_KEY);
 
   if (!raw) {
@@ -45,7 +59,7 @@ function getStoredUser() {
   }
 }
 
-function setStoredUser(user) {
+export function setStoredUser(user) {
   if (!user) {
     localStorage.removeItem(USER_KEY);
     return;
@@ -54,8 +68,35 @@ function setStoredUser(user) {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
-function clearStoredUser() {
+export function clearStoredUser() {
   localStorage.removeItem(USER_KEY);
+}
+
+export function clearSession() {
+  clearToken();
+  clearStoredUser();
+}
+
+export function getAssetUrl(assetUrl) {
+  if (!assetUrl) return "";
+
+  if (
+    assetUrl.startsWith("http://") ||
+    assetUrl.startsWith("https://") ||
+    assetUrl.startsWith("data:") ||
+    assetUrl.startsWith("blob:")
+  ) {
+    return assetUrl;
+  }
+
+  const normalized = normalizePath(assetUrl);
+
+  if (normalized.startsWith("/uploads/")) {
+    const origin = getApiOrigin();
+    return origin ? `${origin}${normalized}` : normalized;
+  }
+
+  return normalized;
 }
 
 async function parseResponse(response) {
@@ -100,11 +141,11 @@ function resolveErrorMessage(payload, fallback) {
   );
 }
 
-async function request(path, options = {}) {
+export async function request(path, options = {}) {
   const baseUrl = normalizeBaseUrl(API_BASE_URL);
   const url = `${baseUrl}${normalizePath(path)}`;
 
-  const token = getStoredToken();
+  const token = getToken();
 
   const headers = {
     ...(options.headers || {}),
@@ -146,34 +187,15 @@ export const apiClient = {
   TOKEN_KEY,
   USER_KEY,
 
-  getToken() {
-    return getStoredToken();
-  },
+  getToken,
+  setToken,
+  clearToken,
+  getAssetUrl,
 
-  setToken(token) {
-    setStoredToken(token);
-  },
-
-  clearToken() {
-    clearStoredToken();
-  },
-
-  getStoredUser() {
-    return getStoredUser();
-  },
-
-  setStoredUser(user) {
-    setStoredUser(user);
-  },
-
-  clearStoredUser() {
-    clearStoredUser();
-  },
-
-  clearSession() {
-    clearStoredToken();
-    clearStoredUser();
-  },
+  getStoredUser,
+  setStoredUser,
+  clearStoredUser,
+  clearSession,
 
   async register(payload) {
     return request("/auth/register", {
@@ -189,7 +211,7 @@ export const apiClient = {
     });
 
     if (response?.token) {
-      setStoredToken(response.token);
+      setToken(response.token);
     }
 
     return response;
@@ -206,7 +228,7 @@ export const apiClient = {
   },
 
   async logout() {
-    this.clearSession();
+    clearSession();
     return true;
   },
 
@@ -302,5 +324,3 @@ export const apiClient = {
     });
   },
 };
-
-export { request };
