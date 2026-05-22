@@ -43,12 +43,29 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/confirm").permitAll()
-                        .requestMatchers("/actuator/health", "/uploads/models/**").permitAll()
-                        .requestMatchers("/api/models/admin/**", "/api/generation-jobs/**").hasRole("ADMIN")
+                        .requestMatchers(
+                                "/api/auth/register",
+                                "/api/auth/login",
+                                "/api/auth/confirm"
+                        ).permitAll()
+
+                        .requestMatchers(
+                                "/actuator/health",
+                                "/uploads/models/**"
+                        ).permitAll()
+
+                        .requestMatchers(
+                                "/api/models/admin/**"
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(
+                                "/api/generation-jobs/**"
+                        ).authenticated()
+
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
         return http.build();
     }
 }
