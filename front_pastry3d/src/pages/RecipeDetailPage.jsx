@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { apiClient } from "../api/apiClient";
@@ -11,7 +11,7 @@ export default function RecipeDetailPage() {
   const [error, setError] = useState("");
   const [rebuilding, setRebuilding] = useState(false);
 
-  async function loadRecipe() {
+  const loadRecipe = useCallback(async function loadRecipe() {
     try {
       setLoading(true);
       setError("");
@@ -32,7 +32,7 @@ export default function RecipeDetailPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
   async function handleRebuild() {
     try {
@@ -48,8 +48,9 @@ export default function RecipeDetailPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRecipe();
-  }, [id]);
+  }, [loadRecipe]);
 
   return (
     <div className="page-stack">

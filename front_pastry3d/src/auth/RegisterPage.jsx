@@ -1,7 +1,17 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CakeSlice } from "lucide-react";
+import { CakeSlice, CheckCircle2, MailCheck } from "lucide-react";
 import { useAuth } from "./AuthContext";
+import {
+  FIELD_LIMITS,
+  clampText,
+  getTextLength,
+  normalizeEmail,
+  passwordChecks,
+  validateDisplayName,
+  validateEmail,
+  validatePassword,
+} from "../utils/validation";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -11,20 +21,48 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const checks = useMemo(() => passwordChecks(password), [password]);
+  const displayNameLength = getTextLength(displayName);
+  const passwordError = password ? validatePassword(password) : "";
+  const canSubmit = !submitting && displayName.trim() && email.trim() && password && !passwordError;
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    setNotice("");
 
-    if (password.length < 8) {
-      setError("La contraseña debe tener mínimo 8 caracteres");
+    const safeDisplayName = clampText(displayName, FIELD_LIMITS.DISPLAY_NAME_MAX).trim();
+    const safeEmail = normalizeEmail(email);
+    const safePassword = clampText(password, FIELD_LIMITS.PASSWORD_MAX);
+
+    const validationError =
+      validateDisplayName(safeDisplayName) ||
+      validateEmail(safeEmail) ||
+      validatePassword(safePassword);
+
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     setSubmitting(true);
+
     try {
-      await register(displayName, email, password);
+      const response = await register({
+        displayName: safeDisplayName,
+        email: safeEmail,
+        password: safePassword,
+      });
+
+      if (response?.pendingEmailConfirmation) {
+        setNotice(`Cuenta creada. Revisa ${response.email || safeEmail} para confirmar tu correo antes de iniciar sesión.`);
+        setPassword("");
+        return;
+      }
+
       navigate("/dashboard");
     } catch (err) {
       setError(err.message || "No se pudo crear la cuenta");
@@ -35,52 +73,98 @@ export default function RegisterPage() {
 
   return (
     <main className="auth-page">
-      <section className="auth-card">
+      <section className="auth-card" aria-labelledby="register-title">
         <div className="brand-mark">
-          <CakeSlice size={28} />
+          <CakeSlice size={28} aria-hidden="true" />
         </div>
         <p className="eyebrow">Pastry3D</p>
-        <h1>Crear cuenta</h1>
+        <h1 id="register-title">Crear cuenta</h1>
         <p className="muted">
           Empieza a construir recetas y escenas 3D con una biblioteca de modelos reutilizables.
         </p>
 
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <label>
+        {notice && (
+          <div className="notice-box" role="status" aria-live="polite">
+            <MailCheck size={20} aria-hidden="true" />
+            <div>
+              <strong>Confirma tu correo</strong>
+              <p>{notice}</p>
+            </div>
+          </div>
+        )}
+
+        <form className="auth-form" onSubmit={handleSubmit} noValidate>
+          <label htmlFor="register-name">
             Nombre visible
             <input
+              id="register-name"
               value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
+              onChange={(event) => setDisplayName(clampText(event.target.value, FIELD_LIMITS.DISPLAY_NAME_MAX))}
+              onBlur={() => setDisplayName((current) => current.trim())}
               placeholder="Sebastián"
+              autoComplete="name"
+              minLength={FIELD_LIMITS.DISPLAY_NAME_MIN}
+              maxLength={FIELD_LIMITS.DISPLAY_NAME_MAX}
+              aria-describedby="register-name-counter"
               required
             />
+            <span className="field-meta" id="register-name-counter">
+              <span className="field-hint">Será visible dentro de tu cuenta.</span>
+              <span className="char-counter">
+                {displayNameLength}/{FIELD_LIMITS.DISPLAY_NAME_MAX}
+              </span>
+            </span>
           </label>
 
-          <label>
+          <label htmlFor="register-email">
             Correo
             <input
+              id="register-email"
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => setEmail(clampText(event.target.value, FIELD_LIMITS.EMAIL_MAX))}
+              onBlur={() => setEmail((current) => normalizeEmail(current))}
               placeholder="tu@email.com"
+              autoComplete="email"
+              inputMode="email"
+              maxLength={FIELD_LIMITS.EMAIL_MAX}
               required
             />
           </label>
 
-          <label>
+          <label htmlFor="register-password">
             Contraseña
             <input
+              id="register-password"
               type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => setPassword(clampText(event.target.value, FIELD_LIMITS.PASSWORD_MAX))}
               placeholder="Mínimo 8 caracteres"
+              autoComplete="new-password"
+              minLength={FIELD_LIMITS.PASSWORD_MIN}
+              maxLength={FIELD_LIMITS.PASSWORD_MAX}
+              aria-describedby="password-rules"
+              aria-invalid={Boolean(passwordError)}
               required
             />
           </label>
 
-          {error && <div className="error-box">{error}</div>}
+          <div className="password-rules" id="password-rules" aria-label="Requisitos de contraseña">
+            {checks.map((check) => (
+              <span className={check.valid ? "is-valid" : ""} key={check.label}>
+                <CheckCircle2 size={14} aria-hidden="true" />
+                {check.label}
+              </span>
+            ))}
+          </div>
 
-          <button className="primary-button" type="submit" disabled={submitting}>
+          {error && (
+            <div className="error-box" role="alert" aria-live="polite">
+              {error}
+            </div>
+          )}
+
+          <button className="primary-button" type="submit" disabled={!canSubmit}>
             {submitting ? "Creando cuenta..." : "Registrarme"}
           </button>
         </form>

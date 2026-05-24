@@ -2,6 +2,7 @@ import { useState } from "react";
 import { apiClient } from "../api/apiClient";
 import PromptComposer from "../components/PromptComposer";
 import RecipeResult from "../components/RecipeResult";
+import { FIELD_LIMITS, clampText, validatePrompt } from "../utils/validation";
 
 export default function DashboardPage() {
   const [prompt, setPrompt] = useState("Quiero una milhojas con una rosa azul encima");
@@ -11,13 +12,21 @@ export default function DashboardPage() {
 
   async function handleGenerate(event) {
     event.preventDefault();
-    if (!prompt.trim()) return;
+
+    const safePrompt = clampText(prompt, FIELD_LIMITS.PROMPT_MAX).trim();
+    const validationError = validatePrompt(safePrompt);
+
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
 
     setLoading(true);
     setError("");
+    setPrompt(safePrompt);
 
     try {
-      const response = await apiClient.generateRecipe(prompt.trim());
+      const response = await apiClient.generateRecipe(safePrompt);
       setResult(response);
     } catch (err) {
       setError(err.message || "No se pudo generar la receta");
@@ -40,7 +49,11 @@ export default function DashboardPage() {
 
       <PromptComposer prompt={prompt} setPrompt={setPrompt} onSubmit={handleGenerate} loading={loading} />
 
-      {error && <div className="error-box large">{error}</div>}
+      {error && (
+        <div className="error-box large" role="alert" aria-live="polite">
+          {error}
+        </div>
+      )}
 
       <RecipeResult result={result} />
     </div>

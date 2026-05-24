@@ -2,6 +2,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080
 
 const TOKEN_KEY = "pastry3d_token";
 const USER_KEY = "pastry3d_user";
+const DEFAULT_TIMEOUT_MS = 120000;
 
 function normalizeBaseUrl(value) {
   if (!value) return "";
@@ -132,6 +133,16 @@ function resolveErrorMessage(payload, fallback) {
     return payload;
   }
 
+  if (payload.fields && typeof payload.fields === "object") {
+    const fieldMessages = Object.entries(payload.fields)
+      .map(([field, message]) => `${field}: ${message}`)
+      .join(". ");
+
+    if (fieldMessages) {
+      return fieldMessages;
+    }
+  }
+
   return (
     payload.message ||
     payload.error ||
@@ -144,8 +155,10 @@ function resolveErrorMessage(payload, fallback) {
 export async function request(path, options = {}) {
   const baseUrl = normalizeBaseUrl(API_BASE_URL);
   const url = `${baseUrl}${normalizePath(path)}`;
-
   const token = getToken();
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   const headers = {
     ...(options.headers || {}),
@@ -162,7 +175,10 @@ export async function request(path, options = {}) {
   const fetchOptions = {
     ...options,
     headers,
+    signal: options.signal || controller.signal,
   };
+
+  delete fetchOptions.timeoutMs;
 
   if (
     fetchOptions.body &&
@@ -172,15 +188,29 @@ export async function request(path, options = {}) {
     fetchOptions.body = JSON.stringify(fetchOptions.body);
   }
 
-  const response = await fetch(url, fetchOptions);
-  const payload = await parseResponse(response);
+  try {
+    const response = await fetch(url, fetchOptions);
+    const payload = await parseResponse(response);
 
-  if (!response.ok) {
-    const message = resolveErrorMessage(payload, `Error HTTP ${response.status}`);
-    throw new Error(message);
+    if (!response.ok) {
+      if (response.status === 401 && !path.includes("/auth/login")) {
+        clearSession();
+      }
+
+      const message = resolveErrorMessage(payload, `Error HTTP ${response.status}`);
+      throw new Error(message);
+    }
+
+    return payload;
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error("La solicitud tardó demasiado. Intenta nuevamente.", { cause: err });
+    }
+
+    throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  return payload;
 }
 
 export const apiClient = {
@@ -215,6 +245,12 @@ export const apiClient = {
     }
 
     return response;
+  },
+
+  async confirmEmail(token) {
+    return request(`/auth/confirm?token=${encodeURIComponent(token)}`, {
+      method: "GET",
+    });
   },
 
   async me() {
@@ -262,9 +298,13 @@ export const apiClient = {
   },
 
   async rebuildRecipeComposition(recipeId) {
-    return request(`/recipes/${recipeId}/rebuild-composition`, {
+    return request(`/recipes/${recipeId}/build-composition`, {
       method: "POST",
     });
+  },
+
+  async rebuildComposition(recipeId) {
+    return this.rebuildRecipeComposition(recipeId);
   },
 
   async deleteRecipe(recipeId) {

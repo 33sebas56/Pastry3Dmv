@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import LoginPage from "./auth/LoginPage";
 import RegisterPage from "./auth/RegisterPage";
+import ConfirmEmailPage from "./auth/ConfirmEmailPage";
 import AppLayout from "./components/AppLayout";
 import DashboardPage from "./pages/DashboardPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -65,6 +66,8 @@ export default function App() {
           </PublicRoute>
         }
       />
+
+      <Route path="/confirm-email" element={<ConfirmEmailPage />} />
 
       <Route
         element={

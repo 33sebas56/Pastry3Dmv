@@ -83,6 +83,7 @@ public class AuthService implements UserDetailsService {
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         String email = normalizeEmail(request.getEmail());
+        String displayName = request.getDisplayName().trim();
 
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new BadRequestException("Ya existe una cuenta registrada con este email");
@@ -101,7 +102,7 @@ public class AuthService implements UserDetailsService {
         user.setEnabled(!mailEnabled);
 
         User savedUser = userRepository.save(user);
-        profileService.createDefaultProfile(savedUser, request.getDisplayName());
+        profileService.createDefaultProfile(savedUser, displayName);
 
         if (mailEnabled) {
             String rawToken = createVerificationToken(savedUser);

@@ -1,4 +1,4 @@
-{$PUBLIC_DOMAIN} {
+http://{$PUBLIC_DOMAIN} {
     encode gzip zstd
 
     reverse_proxy frontend:80

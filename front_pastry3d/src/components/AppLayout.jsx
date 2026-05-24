@@ -13,10 +13,10 @@ export default function AppLayout() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <Link className="sidebar-brand" to="/dashboard">
+      <aside className="sidebar" aria-label="Navegación principal">
+        <Link className="sidebar-brand" to="/dashboard" aria-label="Ir al panel principal de Pastry3D">
           <div className="brand-icon">
-            <CakeSlice size={24} />
+            <CakeSlice size={24} aria-hidden="true" />
           </div>
           <div>
             <strong>Pastry3D</strong>
@@ -26,22 +26,22 @@ export default function AppLayout() {
 
         <nav className="sidebar-nav">
           <NavLink to="/dashboard">
-            <Sparkles size={18} />
+            <Sparkles size={18} aria-hidden="true" />
             Generar
           </NavLink>
           <NavLink to="/history">
-            <History size={18} />
+            <History size={18} aria-hidden="true" />
             Historial
           </NavLink>
         </nav>
 
         <div className="sidebar-footer">
-          <div className="user-chip">
+          <div className="user-chip" title={user?.email || "Usuario"}>
             <span>{user?.displayName || user?.email || "Usuario"}</span>
             <small>{user?.role || "USER"}</small>
           </div>
-          <button className="ghost-button full" onClick={handleLogout}>
-            <LogOut size={17} />
+          <button className="ghost-button full" onClick={handleLogout} type="button">
+            <LogOut size={17} aria-hidden="true" />
             Salir
           </button>
         </div>

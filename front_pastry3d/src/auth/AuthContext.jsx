@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { apiClient, clearToken, getToken, setToken } from "../api/apiClient";
 
 const AuthContext = createContext(null);
@@ -39,7 +40,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState("");
 
-  async function refreshUser() {
+  const refreshUser = useCallback(async function refreshUser() {
     const token = getToken();
 
     if (!token) {
@@ -52,7 +53,7 @@ export function AuthProvider({ children }) {
     setUser(currentUser);
     apiClient.setStoredUser(currentUser);
     return currentUser;
-  }
+  }, []);
 
   useEffect(() => {
     async function bootstrap() {
@@ -76,9 +77,9 @@ export function AuthProvider({ children }) {
     }
 
     bootstrap();
-  }, []);
+  }, [refreshUser]);
 
-  async function login(emailOrPayload, password) {
+  const login = useCallback(async function login(emailOrPayload, password) {
     setAuthError("");
 
     const payload = normalizeLoginPayload(emailOrPayload, password);
@@ -93,9 +94,9 @@ export function AuthProvider({ children }) {
 
     const currentUser = await refreshUser();
     return currentUser;
-  }
+  }, [refreshUser]);
 
-  async function register(displayNameOrPayload, email, password) {
+  const register = useCallback(async function register(displayNameOrPayload, email, password) {
     setAuthError("");
 
     const payload = normalizeRegisterPayload(displayNameOrPayload, email, password);
@@ -124,13 +125,13 @@ export function AuthProvider({ children }) {
       user: currentUser,
       raw: response,
     };
-  }
+  }, [refreshUser]);
 
-  function logout() {
+  const logout = useCallback(function logout() {
     clearToken();
     apiClient.clearStoredUser();
     setUser(null);
-  }
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -143,7 +144,7 @@ export function AuthProvider({ children }) {
       logout,
       refreshUser,
     }),
-    [user, loading, authError]
+    [user, loading, authError, login, register, logout, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

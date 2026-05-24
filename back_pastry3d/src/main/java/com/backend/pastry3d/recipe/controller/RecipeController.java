@@ -42,7 +42,7 @@ public class RecipeController {
         return recipeService.getDetail(id, currentUser.getId());
     }
 
-    @PostMapping("/{id}/build-composition")
+    @PostMapping({"/{id}/build-composition", "/{id}/rebuild-composition"})
     public RecipeGenerateResponse rebuildComposition(@PathVariable Long id, Authentication authentication) {
         User currentUser = currentUserService.getCurrentUser(authentication);
         return recipeService.rebuildComposition(id, currentUser.getId());

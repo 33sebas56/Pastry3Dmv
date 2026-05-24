@@ -1,9 +1,18 @@
 package com.backend.pastry3d.profile.dto;
 
+import jakarta.validation.constraints.Size;
+
 public class ProfileUpdateRequest {
+    @Size(max = 60, message = "El nombre no puede superar 60 caracteres")
     private String displayName;
+
+    @Size(max = 500, message = "La URL del avatar no puede superar 500 caracteres")
     private String avatarUrl;
+
+    @Size(max = 40, message = "El nivel no puede superar 40 caracteres")
     private String skillLevel;
+
+    @Size(max = 2000, message = "Las preferencias no pueden superar 2000 caracteres")
     private String preferencesJson;
 
     public String getDisplayName() { return displayName; }
