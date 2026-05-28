@@ -80,6 +80,7 @@ services:
 
       STORAGE_UPLOADS: ${STORAGE_UPLOADS:-/opt/pastry3d/uploads/models}
       APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-https://pastry3d-sebas.duckdns.org,http://pastry3d-sebas.duckdns.org}
+      APP_FRONTEND_BASE_URL: ${APP_FRONTEND_BASE_URL:-https://extract-lemon-suits-just.trycloudflare.com}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://pastry3d-sebas.duckdns.org}
 
       JPA_SHOW_SQL: ${JPA_SHOW_SQL:-false}
