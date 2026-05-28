@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CakeSlice, CheckCircle2, MailCheck } from "lucide-react";
+import { CakeSlice, CheckCircle2, Eye, EyeOff, MailCheck } from "lucide-react";
 import { useAuth } from "./AuthContext";
 import {
   FIELD_LIMITS,
@@ -20,6 +20,7 @@ export default function RegisterPage() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -134,19 +135,29 @@ export default function RegisterPage() {
 
           <label htmlFor="register-password">
             Contraseña
-            <input
-              id="register-password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(clampText(event.target.value, FIELD_LIMITS.PASSWORD_MAX))}
-              placeholder="Mínimo 8 caracteres"
-              autoComplete="new-password"
-              minLength={FIELD_LIMITS.PASSWORD_MIN}
-              maxLength={FIELD_LIMITS.PASSWORD_MAX}
-              aria-describedby="password-rules"
-              aria-invalid={Boolean(passwordError)}
-              required
-            />
+            <div className="password-field">
+              <input
+                id="register-password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(clampText(event.target.value, FIELD_LIMITS.PASSWORD_MAX))}
+                placeholder="Mínimo 8 caracteres"
+                autoComplete="new-password"
+                minLength={FIELD_LIMITS.PASSWORD_MIN}
+                maxLength={FIELD_LIMITS.PASSWORD_MAX}
+                aria-describedby="password-rules"
+                aria-invalid={Boolean(passwordError)}
+                required
+              />
+              <button
+                className="password-toggle"
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+              </button>
+            </div>
           </label>
 
           <div className="password-rules" id="password-rules" aria-label="Requisitos de contraseña">

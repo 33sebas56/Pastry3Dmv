@@ -11,12 +11,14 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.text.Normalizer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 @Service
 public class GeminiClient {
@@ -79,6 +81,93 @@ public class GeminiClient {
         } catch (Exception exception) {
             return fallbackPlan(userPrompt);
         }
+    }
+
+
+    public void validatePastryPrompt(String userPrompt) {
+        if (userPrompt == null || userPrompt.isBlank()) {
+            throw new BadRequestException("Describe un postre o producto de repostería para generar la receta.");
+        }
+
+        String normalized = normalizeForValidation(userPrompt);
+
+        if (containsBlockedContent(normalized)) {
+            throw new BadRequestException("Aquí solo generamos postres y repostería. No se aceptan pedidos obscenos, violentos, ofensivos o ajenos al laboratorio dulce.");
+        }
+
+        if (!looksLikeDessertRequest(normalized)) {
+            throw new BadRequestException("Aquí solo consideramos postres, pasteles, toppings y productos de repostería. Describe un postre real para poder generarlo.");
+        }
+
+        if (!enabled || apiKey == null || apiKey.isBlank()) {
+            return;
+        }
+
+        try {
+            String instruction = buildValidationInstruction(userPrompt);
+            String body = buildGeminiRequest(instruction);
+
+            String encodedModel = URLEncoder.encode(model, StandardCharsets.UTF_8);
+            String url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodedModel + ":generateContent?key=" + apiKey;
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(30))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return;
+            }
+
+            String text = extractGeminiText(response.body());
+            String json = cleanJson(text);
+            Map<String, Object> result = objectMapper.readValue(json, new TypeReference<>() {});
+
+            boolean accepted = booleanValue(result.get("accepted"), true);
+            if (!accepted) {
+                String reason = stringValue(
+                        result.get("reason"),
+                        "Aquí solo consideramos postres y repostería. Reformula el pedido como un postre real."
+                );
+                throw new BadRequestException(reason);
+            }
+        } catch (BadRequestException exception) {
+            throw exception;
+        } catch (Exception ignored) {
+            // Si falla la validación remota, se conserva la validación local para no romper la demo.
+        }
+    }
+
+
+    private String buildValidationInstruction(String userPrompt) {
+        return """
+                Eres el moderador culinario de Pastry3D.
+                Evalúa si el pedido del usuario corresponde a un postre, pastel, tarta, cupcake, flan, helado, dona, milhojas, cheesecake o decoración comestible de repostería.
+
+                Rechaza si el texto:
+                - no trata de postres o repostería,
+                - contiene obscenidad, insultos, violencia, odio, sexualización, drogas, armas o datos personales,
+                - pide texto ofensivo sobre el pastel,
+                - pide generar personas, desnudez, partes sexuales, sangre, armas, política o marcas/logos.
+
+                Acepta si el pedido es un postre con toppings normales, colores, frutas, crema, chocolate, rosas comestibles, velas o decoraciones no ofensivas.
+
+                Pedido:
+                "%s"
+
+                Devuelve solo JSON válido:
+                {
+                  "accepted": true,
+                  "reason": ""
+                }
+
+                Si rechazas, usa una razón breve en español, por ejemplo:
+                "Aquí solo consideramos postres y repostería. Describe un postre real para poder generarlo."
+                """.formatted(userPrompt);
     }
 
     private String buildInstruction(String userPrompt) {
@@ -657,6 +746,59 @@ public class GeminiClient {
         }
 
         return text;
+    }
+
+
+    private boolean booleanValue(Object value, boolean fallback) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+
+        if (value == null) {
+            return fallback;
+        }
+
+        String text = value.toString().trim().toLowerCase(Locale.ROOT);
+        if ("true".equals(text) || "yes".equals(text) || "si".equals(text) || "sí".equals(text)) {
+            return true;
+        }
+
+        if ("false".equals(text) || "no".equals(text)) {
+            return false;
+        }
+
+        return fallback;
+    }
+
+    private String normalizeForValidation(String value) {
+        String lower = String.valueOf(value == null ? "" : value).toLowerCase(Locale.ROOT);
+        String decomposed = Normalizer.normalize(lower, Normalizer.Form.NFD);
+        return decomposed
+                .replaceAll("\\p{M}", "")
+                .replaceAll("[^a-z0-9ñáéíóúü\\s_-]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private boolean containsBlockedContent(String text) {
+        return containsAny(text,
+                "sexo", "sexual", "porno", "porn", "desnudo", "desnuda", "nude", "xxx",
+                "pene", "vagina", "tetas", "culo", "anal", "fetiche",
+                "matar", "asesinar", "sangre", "gore", "cadaver", "cuchillo", "arma", "pistola", "bomba",
+                "cocaina", "cocaína", "marihuana", "droga", "nazi", "racista",
+                "puta", "puto", "mierda", "malparido", "hijueputa", "hp ", " hpta"
+        );
+    }
+
+    private boolean looksLikeDessertRequest(String text) {
+        return containsAny(text,
+                "postre", "reposteria", "repostería", "pastel", "torta", "cake", "bizcocho",
+                "flan", "dona", "donut", "rosquilla", "helado", "ice cream", "milhojas",
+                "cheesecake", "tarta", "pay", "pie", "cupcake", "magdalena", "brownie",
+                "galleta", "macaron", "macarron", "macarrón", "chocolate", "fresa", "cereza",
+                "arandano", "arándano", "blueberry", "crema", "chantilly", "vainilla",
+                "caramelo", "glaseado", "merengue", "mousse", "rosa", "velas", "vela"
+        );
     }
 
     private boolean containsAny(String text, String... values) {

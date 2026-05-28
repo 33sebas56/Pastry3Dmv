@@ -27,6 +27,15 @@ public class GenerationJobController {
         return generationJobService.getJob(id);
     }
 
+    @PostMapping("/recipes/{recipeId}/start-tripo")
+    public GenerationJob startTripoForRecipe(
+            @PathVariable Long recipeId,
+            Authentication authentication
+    ) {
+        User currentUser = currentUserService.getCurrentUser(authentication);
+        return generationJobService.startTripoForRecipe(recipeId, currentUser.getId());
+    }
+
     @PostMapping("/recipes/{recipeId}/start-fairstack")
     public GenerationJob startFairStackForRecipe(
             @PathVariable Long recipeId,

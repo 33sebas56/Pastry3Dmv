@@ -313,9 +313,17 @@ export const apiClient = {
     });
   },
 
+  async startTripoGeneration(recipeId) {
+    return request(`/generation-jobs/recipes/${recipeId}/start-tripo`, {
+      method: "POST",
+      timeoutMs: 180000,
+    });
+  },
+
   async startFairStackGeneration(recipeId) {
     return request(`/generation-jobs/recipes/${recipeId}/start-fairstack`, {
       method: "POST",
+      timeoutMs: 180000,
     });
   },
 

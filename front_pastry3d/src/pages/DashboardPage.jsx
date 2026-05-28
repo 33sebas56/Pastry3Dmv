@@ -5,10 +5,14 @@ import RecipeResult from "../components/RecipeResult";
 import { FIELD_LIMITS, clampText, validatePrompt } from "../utils/validation";
 
 export default function DashboardPage() {
-  const [prompt, setPrompt] = useState("Quiero una milhojas con una rosa azul encima");
+  const [prompt, setPrompt] = useState("Milhojas con rosa azul");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  function updatePrompt(value) {
+    setPrompt(clampText(value, FIELD_LIMITS.PROMPT_MAX));
+  }
 
   async function handleGenerate(event) {
     event.preventDefault();
@@ -23,7 +27,6 @@ export default function DashboardPage() {
 
     setLoading(true);
     setError("");
-    setPrompt(safePrompt);
 
     try {
       const response = await apiClient.generateRecipe(safePrompt);
@@ -47,13 +50,9 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <PromptComposer prompt={prompt} setPrompt={setPrompt} onSubmit={handleGenerate} loading={loading} />
+      <PromptComposer prompt={prompt} setPrompt={updatePrompt} onSubmit={handleGenerate} loading={loading} />
 
-      {error && (
-        <div className="error-box large" role="alert" aria-live="polite">
-          {error}
-        </div>
-      )}
+      {error && <div className="error-box large">{error}</div>}
 
       <RecipeResult result={result} />
     </div>

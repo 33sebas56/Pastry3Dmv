@@ -72,7 +72,7 @@ export default function RecipeResult({ result }) {
 
   async function handleGenerateFromScratch() {
     const confirmed = window.confirm(
-      "Esto intentará enviar el prompt a un proveedor externo de IA 3D. Puede consumir créditos si el proveedor acepta la solicitud. ¿Continuar?"
+      "Esto enviará el prompt técnico a Tripo para generar un GLB. Puede consumir créditos de tu cuenta Tripo. ¿Continuar?"
     );
 
     if (!confirmed) return;
@@ -81,7 +81,7 @@ export default function RecipeResult({ result }) {
       setGenerationLoading(true);
       setGenerationError("");
 
-      const response = await apiClient.startFairStackGeneration(result.recipeId);
+      const response = await apiClient.startTripoGeneration(result.recipeId);
       setGenerationJob(response);
     } catch (err) {
       setGenerationError(err.message || "No se pudo iniciar la generación externa.");
@@ -144,7 +144,7 @@ export default function RecipeResult({ result }) {
               <p>{missingAssets.join(", ")}</p>
 
               <p className="muted">
-                Pastry3D dejó preparado el prompt y el job para generación externa. Si el proveedor 3D está disponible, el modelo puede generarse y guardarse en la biblioteca.
+                Pastry3D dejó preparado el prompt técnico. Si activas Tripo, el modelo puede generarse como GLB y guardarse en la biblioteca.
               </p>
 
               {showGenerateButton && (
@@ -156,7 +156,7 @@ export default function RecipeResult({ result }) {
                     disabled={generationLoading}
                   >
                     <Sparkles size={17} />
-                    {generationLoading ? "Enviando..." : "Generar desde cero"}
+                    {generationLoading ? "Enviando a Tripo..." : "Generar con Tripo"}
                   </button>
                 </div>
               )}
@@ -178,7 +178,7 @@ export default function RecipeResult({ result }) {
 
             {generationJob.status === "FAILED" && (
               <div className="error-box large">
-                <strong>El proveedor externo rechazó la solicitud.</strong>
+                <strong>Tripo rechazó o falló la solicitud.</strong>
                 <p>{cleanProviderError(generationJob.errorMessage)}</p>
               </div>
             )}
@@ -187,7 +187,7 @@ export default function RecipeResult({ result }) {
               <p>Modelo generado y guardado en la biblioteca.</p>
             ) : generationJob.status === "FAILED" ? (
               <p className="muted">
-                La arquitectura de generación quedó preparada, pero el proveedor externo no aceptó la generación 3D con la configuración actual. La experiencia principal sigue funcionando con modelos GLB locales y composición por assets.
+                La generación quedó registrada, pero Tripo no aceptó o no completó el modelo con la configuración actual. La experiencia principal sigue funcionando con modelos GLB locales y composición por assets.
               </p>
             ) : (
               <p>

@@ -2,71 +2,64 @@ import { Wand2 } from "lucide-react";
 import { FIELD_LIMITS, clampText, getTextLength, validatePrompt } from "../utils/validation";
 
 const EXAMPLES = [
-  "Quiero una milhojas con una rosa azul encima",
-  "Hazme un pastel de vainilla con fresas arriba",
-  "Quiero un cupcake elegante con crema y una vela",
-  "Crea un pastel redondo con decoración de chocolate",
+  "Milhojas con rosa azul",
+  "Pastel vainilla con fresas",
+  "Cupcake con crema y vela",
+  "Pastel con chocolate",
 ];
 
 export default function PromptComposer({ prompt, setPrompt, onSubmit, loading }) {
   const promptLength = getTextLength(prompt);
-  const promptError = prompt ? validatePrompt(prompt) : "";
-  const remaining = FIELD_LIMITS.PROMPT_MAX - promptLength;
-  const canSubmit = !loading && !promptError && prompt.trim().length > 0;
+  const validationError = prompt ? validatePrompt(prompt) : "";
 
-  function handlePromptChange(event) {
+  function handleChange(event) {
     setPrompt(clampText(event.target.value, FIELD_LIMITS.PROMPT_MAX));
   }
 
   return (
-    <section className="panel prompt-panel" aria-labelledby="prompt-title">
+    <section className="panel prompt-panel">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Generador IA</p>
-          <h2 id="prompt-title">Describe el postre que quieres crear</h2>
-          <p className="muted panel-subtitle">
-            Escribe una idea clara. Evita datos personales; solo necesitamos la descripción del postre.
-          </p>
+          <h2>Describe el postre que quieres crear</h2>
         </div>
         <div className="round-icon">
-          <Wand2 size={22} aria-hidden="true" />
+          <Wand2 size={22} />
         </div>
       </div>
 
-      <form onSubmit={onSubmit} className="prompt-form" noValidate>
-        <label htmlFor="dessert-prompt" className="sr-only">
-          Descripción del postre
-        </label>
+      <form onSubmit={onSubmit} className="prompt-form">
         <textarea
-          id="dessert-prompt"
           value={prompt}
-          onChange={handlePromptChange}
-          placeholder="Ejemplo: quiero una milhojas con una rosa azul encima..."
+          onChange={handleChange}
+          placeholder="Ejemplo: milhojas con una rosa azul encima..."
           rows={5}
-          minLength={FIELD_LIMITS.PROMPT_MIN}
           maxLength={FIELD_LIMITS.PROMPT_MAX}
-          aria-describedby="prompt-counter prompt-hint"
-          aria-invalid={Boolean(promptError)}
+          aria-describedby="prompt-counter prompt-error"
+          aria-invalid={Boolean(validationError)}
         />
+
         <div className="field-meta" id="prompt-counter">
-          <span className="field-hint" id="prompt-hint">
-            Mínimo {FIELD_LIMITS.PROMPT_MIN} caracteres. Máximo {FIELD_LIMITS.PROMPT_MAX}.
-          </span>
-          <span className={`char-counter ${remaining < 80 ? "is-warning" : ""}`}>
+          <span className="field-hint">Solo postres, toppings y repostería.</span>
+          <span className="char-counter">
             {promptLength}/{FIELD_LIMITS.PROMPT_MAX}
           </span>
         </div>
 
-        {promptError && <p className="field-error">{promptError}</p>}
+        {validationError && (
+          <div className="error-box" id="prompt-error" role="alert">
+            {validationError}
+          </div>
+        )}
 
-        <button className="primary-button" type="submit" disabled={!canSubmit}>
+        <button className="primary-button" type="submit" disabled={loading || Boolean(validationError) || !prompt.trim()}>
           {loading ? "Pensando receta..." : "Generar receta y escena"}
         </button>
       </form>
 
-      <div className="example-list" aria-label="Ejemplos de prompts">
+      <div className="example-list">
         {EXAMPLES.map((example) => (
-          <button key={example} type="button" onClick={() => setPrompt(example)}>
+          <button key={example} type="button" onClick={() => setPrompt(clampText(example, FIELD_LIMITS.PROMPT_MAX))}>
             {example}
           </button>
         ))}

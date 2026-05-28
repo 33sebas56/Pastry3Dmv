@@ -62,13 +62,16 @@ public class RecipeService {
             throw new BadRequestException("El prompt de la receta es obligatorio");
         }
 
-        Map<String, Object> plan = geminiClient.generateRecipePlan(prompt);
+        String safePrompt = prompt.trim();
+        geminiClient.validatePastryPrompt(safePrompt);
+
+        Map<String, Object> plan = geminiClient.generateRecipePlan(safePrompt);
         Map<String, Object> recipeMap = castMap(plan.get("recipe"));
         Map<String, Object> visualPlan = castMap(plan.get("visualPlan"));
 
         Recipe recipe = new Recipe();
         recipe.setUserId(user.getId());
-        recipe.setPrompt(prompt);
+        recipe.setPrompt(safePrompt);
         recipe.setTitle(stringValue(recipeMap.get("title"), "Receta Pastry3D"));
         recipe.setDessertType(stringValue(recipeMap.get("dessertType"), stringValue(visualPlan.get("dessertType"), "generic_dessert")));
         recipe.setDifficulty(stringValue(recipeMap.get("difficulty"), "BEGINNER"));
