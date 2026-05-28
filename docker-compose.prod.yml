@@ -62,10 +62,25 @@ services:
       FAIRSTACK_CONFIRM: ${FAIRSTACK_CONFIRM:-false}
       FAIRSTACK_MAX_COST_USD: ${FAIRSTACK_MAX_COST_USD:-3.00}
 
+      TRIPO_ENABLED: ${TRIPO_ENABLED:-false}
+      TRIPO_BASE_URL: ${TRIPO_BASE_URL:-https://api.tripo3d.ai/v2/openapi}
+      TRIPO_API_KEY: ${TRIPO_API_KEY:-}
+      TRIPO_MODEL_VERSION: ${TRIPO_MODEL_VERSION:-v3.1-20260211}
+      TRIPO_TEXTURE: ${TRIPO_TEXTURE:-true}
+      TRIPO_PBR: ${TRIPO_PBR:-true}
+      TRIPO_TEXTURE_QUALITY: ${TRIPO_TEXTURE_QUALITY:-standard}
+      TRIPO_GEOMETRY_QUALITY: ${TRIPO_GEOMETRY_QUALITY:-standard}
+      TRIPO_FACE_LIMIT: ${TRIPO_FACE_LIMIT:-30000}
+      TRIPO_AUTO_SIZE: ${TRIPO_AUTO_SIZE:-true}
+      TRIPO_EXPORT_UV: ${TRIPO_EXPORT_UV:-true}
+      TRIPO_SMART_LOW_POLY: ${TRIPO_SMART_LOW_POLY:-false}
+      TRIPO_QUAD: ${TRIPO_QUAD:-false}
+      TRIPO_NEGATIVE_PROMPT: ${TRIPO_NEGATIVE_PROMPT:-low quality, blurry, deformed, broken geometry, extra objects, plate, table, hands, people, text, logo, watermark}
+      TRIPO_TIMEOUT_SECONDS: ${TRIPO_TIMEOUT_SECONDS:-180}
+
       STORAGE_UPLOADS: ${STORAGE_UPLOADS:-/opt/pastry3d/uploads/models}
       APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-https://pastry3d-sebas.duckdns.org,http://pastry3d-sebas.duckdns.org}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://pastry3d-sebas.duckdns.org}
-      APP_FRONTEND_BASE_URL: ${APP_FRONTEND_BASE_URL:-https://pastry3d-sebas.duckdns.org}
 
       JPA_SHOW_SQL: ${JPA_SHOW_SQL:-false}
     volumes:
