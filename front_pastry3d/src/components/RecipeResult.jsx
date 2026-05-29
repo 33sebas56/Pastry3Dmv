@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BookOpen, Clock, PackageSearch, Sparkles, Users } from "lucide-react";
 import { apiClient } from "../api/apiClient";
 import SceneViewer from "./SceneViewer";
@@ -50,7 +50,42 @@ function cleanProviderError(message) {
 export default function RecipeResult({ result }) {
   const [generationJob, setGenerationJob] = useState(null);
   const [generationLoading, setGenerationLoading] = useState(false);
+  const [activeJobLoading, setActiveJobLoading] = useState(false);
   const [generationError, setGenerationError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadActiveGenerationJob() {
+      if (!result?.recipeId || result?.status !== "PENDING_MANUAL_MODEL") {
+        setActiveJobLoading(false);
+        return;
+      }
+
+      try {
+        setActiveJobLoading(true);
+        const response = await apiClient.getActiveTripoJob(result.recipeId);
+
+        if (!cancelled && response?.id) {
+          setGenerationJob(response);
+        }
+      } catch {
+        // Si no hay job activo, se permite generar normalmente.
+      } finally {
+        if (!cancelled) {
+          setActiveJobLoading(false);
+        }
+      }
+    }
+
+    setGenerationJob(null);
+    setGenerationError("");
+    loadActiveGenerationJob();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [result?.recipeId, result?.status]);
 
   if (!result) {
     return (
@@ -68,9 +103,13 @@ export default function RecipeResult({ result }) {
   const ingredients = readIngredients(recipe);
   const steps = readSteps(recipe);
   const activeStatus = generationJob?.status || result.status;
-  const showGenerateButton = canGenerateFromScratch(result, missingAssets);
+  const hasActiveGeneration = generationJob && ["GENERATING", "READY"].includes(generationJob.status);
+  const showGenerateButton = canGenerateFromScratch(result, missingAssets) && !hasActiveGeneration && !activeJobLoading;
+
 
   async function handleGenerateFromScratch() {
+    if (generationLoading || hasActiveGeneration) return;
+
     const confirmed = window.confirm(
       "Esto enviará el prompt técnico a Tripo para generar un GLB. Puede consumir créditos de tu cuenta Tripo. ¿Continuar?"
     );

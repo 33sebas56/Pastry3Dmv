@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -77,6 +78,12 @@ public class GenerationJobService {
         }
 
         Recipe recipe = getOwnedRecipe(recipeId, userId);
+
+        GenerationJob reusableJob = findReusableTripoJob(recipe.getId());
+        if (reusableJob != null) {
+            return reusableJob;
+        }
+
         String prompt = buildExternalPrompt(recipe);
         String assetKey = buildGeneratedAssetKey(recipe);
 
@@ -109,6 +116,21 @@ public class GenerationJobService {
             saved.setErrorMessage(cleanError(exception.getMessage()));
             return generationJobRepository.save(saved);
         }
+    }
+
+
+    private GenerationJob findReusableTripoJob(Long recipeId) {
+        List<GenerationJob> existingJobs = generationJobRepository.findByRecipeIdAndProviderAndStatusInOrderByCreatedAtDesc(
+                recipeId,
+                PROVIDER_TRIPO,
+                List.of(AppConstants.STATUS_GENERATING, AppConstants.STATUS_READY)
+        );
+
+        if (existingJobs == null || existingJobs.isEmpty()) {
+            return null;
+        }
+
+        return existingJobs.get(0);
     }
 
     @Transactional
@@ -161,6 +183,13 @@ public class GenerationJobService {
             saved.setErrorMessage(cleanError(exception.getMessage()));
             return generationJobRepository.save(saved);
         }
+    }
+
+
+    @Transactional(readOnly = true)
+    public GenerationJob getActiveTripoJobForRecipe(Long recipeId, Long userId) {
+        Recipe recipe = getOwnedRecipe(recipeId, userId);
+        return findReusableTripoJob(recipe.getId());
     }
 
     @Transactional(readOnly = true)

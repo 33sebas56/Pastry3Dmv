@@ -4,6 +4,7 @@ import com.backend.pastry3d.auth.entity.User;
 import com.backend.pastry3d.generation.entity.GenerationJob;
 import com.backend.pastry3d.generation.service.GenerationJobService;
 import com.backend.pastry3d.shared.security.CurrentUserService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,6 +26,22 @@ public class GenerationJobController {
     @GetMapping("/{id}")
     public GenerationJob getJob(@PathVariable Long id) {
         return generationJobService.getJob(id);
+    }
+
+
+    @GetMapping("/recipes/{recipeId}/active-tripo")
+    public ResponseEntity<GenerationJob> getActiveTripoJobForRecipe(
+            @PathVariable Long recipeId,
+            Authentication authentication
+    ) {
+        User currentUser = currentUserService.getCurrentUser(authentication);
+        GenerationJob job = generationJobService.getActiveTripoJobForRecipe(recipeId, currentUser.getId());
+
+        if (job == null) {
+            return ResponseEntity.noContent().build();
+        }
+
+        return ResponseEntity.ok(job);
     }
 
     @PostMapping("/recipes/{recipeId}/start-tripo")

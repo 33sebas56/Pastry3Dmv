@@ -95,11 +95,10 @@ public class GeminiClient {
             throw new BadRequestException("Aquí solo generamos postres y repostería. No se aceptan pedidos obscenos, violentos, ofensivos o ajenos al laboratorio dulce.");
         }
 
-        if (!looksLikeDessertRequest(normalized)) {
-            throw new BadRequestException("Aquí solo consideramos postres, pasteles, toppings y productos de repostería. Describe un postre real para poder generarlo.");
-        }
-
         if (!enabled || apiKey == null || apiKey.isBlank()) {
+            if (!looksLikeDessertRequest(normalized)) {
+                throw new BadRequestException("Aquí solo consideramos postres, pasteles, toppings y productos de repostería. Describe un postre real para poder generarlo.");
+            }
             return;
         }
 
@@ -139,6 +138,9 @@ public class GeminiClient {
             throw exception;
         } catch (Exception ignored) {
             // Si falla la validación remota, se conserva la validación local para no romper la demo.
+            if (!looksLikeDessertRequest(normalized)) {
+                throw new BadRequestException("Aquí solo consideramos postres, pasteles, toppings y productos de repostería. Describe un postre real para poder generarlo.");
+            }
         }
     }
 
@@ -146,7 +148,7 @@ public class GeminiClient {
     private String buildValidationInstruction(String userPrompt) {
         return """
                 Eres el moderador culinario de Pastry3D.
-                Evalúa si el pedido del usuario corresponde a un postre, pastel, tarta, cupcake, flan, helado, dona, milhojas, cheesecake o decoración comestible de repostería.
+                Evalúa si el pedido del usuario corresponde a un postre, pastel, tarta, cupcake, flan, helado, gelato, sorbete, dona, milhojas, cheesecake, tiramisú, mousse, galleta, brownie, macaron, parfait, postre frío, postre latino, postre italiano, postre francés, postre árabe, postre japonés, postre de panadería dulce o decoración comestible de repostería. Acepta nombres internacionales de postres aunque no estén en la biblioteca local de modelos. Si el usuario escribe mal un nombre de postre, corrígelo al postre real más cercano antes de decidir. Trabaja con un catálogo amplio y progresivo de postres, por ejemplo: gelato, sorbet, tiramisu, panna cotta, baklava, cannoli, profiteroles, eclair, pavlova, mochi, tres leches, arroz con leche, lemon pie, apple pie, red velvet, carrot cake, alfajor, natilla, churros, brownie, crepes, waffle, pancakes dulces, macaron, mousse, parfait, trifle, opera cake, black forest cake, banoffee pie, key lime pie, pecan pie, pumpkin pie, rice pudding, pudding, custard, flan, quesillo, creme brulee, cheesecake, donut, cupcake, cake pop, roll cake, cinnamon roll, churro sundae, banana split, sundae, milkshake dessert, churros con chocolate, buñuelos, mazamorra dulce y brevas con arequipe. Si el usuario escribe mal un nombre de postre, corrígelo al postre real más cercano antes de decidir. Por ejemplo: llelato, jelato o yelato deben entenderse como gelato; tiramisu mal escrito debe entenderse como tiramisu; pana cota debe entenderse como panna cotta; crem brule debe entenderse como creme brulee, por ejemplo cannoli, eclair, profiteroles, pavlova, mochi, tres leches, arroz con leche, lemon pie, apple pie, red velvet, carrot cake, churros, alfajor, natilla, panna cotta, creme brulee, baklava y flan.
 
                 Rechaza si el texto:
                 - no trata de postres o repostería,
@@ -186,8 +188,9 @@ public class GeminiClient {
                 5. Si existe un modelo completo vistoso, úsalo con requiredAssets vacío.
                 6. Si el usuario pide una base combinable con toppings, usa requiredAssets para pedir toppings.
                 7. Si pide dos toppings, incluye ambos y usa anchors diferentes.
-                8. Si pide algo que no existe, por ejemplo dragón, corona, unicornio o personaje, inclúyelo como requiredAsset con un assetKey descriptivo para que el backend lo marque como faltante.
-                9. Devuelve solo JSON válido. No uses markdown.
+                8. Si el postre principal pedido por el usuario NO existe exactamente en la lista de tipos disponibles, NO lo reemplaces por round_cake, ice_cream, flan ni otro modelo parecido. Mantén el postre real solicitado como dessertType usando un slug en inglés o español sin espacios, por ejemplo gelato, tiramisu, panna_cotta, baklava, creme_brulee. En ese caso usa requiredAssets vacío para que el backend marque que falta el modelo completo y pueda enviarlo a Tripo.
+                9. Si lo que falta es una decoración sobre un postre existente, por ejemplo dragón, corona, unicornio o personaje, inclúyelo como requiredAsset con un assetKey descriptivo para que el backend lo marque como faltante.
+                10. Devuelve solo JSON válido. No uses markdown.
                 
                 Tipos de postre disponibles:
                 - flan: flan napolitano completo
@@ -297,6 +300,9 @@ public class GeminiClient {
                 - "torta con rosas y fresas" => dessertType round_cake, requiredAssets caramel_rose y strawberry_topping
                 - "milhojas con cerezas y arándanos" => dessertType milhojas, requiredAssets cherry_topping y blueberry_topping
                 - "pastel con dragón dorado" => dessertType round_cake, requiredAssets dragon_gold_topper
+                - "gelato" => dessertType gelato, requiredAssets []
+                - "tiramisú" => dessertType tiramisu, requiredAssets []
+                - "panna cotta" => dessertType panna_cotta, requiredAssets []
                 """.formatted(userPrompt);
     }
 
@@ -465,6 +471,334 @@ public class GeminiClient {
             return "donut";
         }
 
+        if (containsAny(text, "gelato")) {
+            return "gelato";
+        }
+
+        if (containsAny(text, "sorbete", "sorbet")) {
+            return "sorbet";
+        }
+
+        if (containsAny(text, "tiramisu", "tiramisú")) {
+            return "tiramisu";
+        }
+
+        if (containsAny(text, "panna cotta", "pannacotta")) {
+            return "panna_cotta";
+        }
+
+        if (containsAny(text, "baklava")) {
+            return "baklava";
+        }
+
+        if (containsAny(text, "creme brulee", "crème brûlée", "crema catalana")) {
+            return "creme_brulee";
+        }
+
+        if (containsAny(text, "cannoli", "cannolo")) {
+            return "cannoli";
+        }
+
+        if (containsAny(text, "profiterol", "profiteroles")) {
+            return "profiteroles";
+        }
+
+        if (containsAny(text, "eclair", "éclair")) {
+            return "eclair";
+        }
+
+        if (containsAny(text, "pavlova")) {
+            return "pavlova";
+        }
+
+        if (containsAny(text, "mochi")) {
+            return "mochi";
+        }
+
+        if (containsAny(text, "tres leches", "torta tres leches", "pastel tres leches")) {
+            return "tres_leches";
+        }
+
+        if (containsAny(text, "arroz con leche")) {
+            return "arroz_con_leche";
+        }
+
+        if (containsAny(text, "lemon pie", "pie de limon", "pie de limón", "tarta de limon", "tarta de limón")) {
+            return "lemon_pie";
+        }
+
+        if (containsAny(text, "apple pie", "pie de manzana", "tarta de manzana")) {
+            return "apple_pie";
+        }
+
+        if (containsAny(text, "red velvet")) {
+            return "red_velvet";
+        }
+
+        if (containsAny(text, "carrot cake", "torta de zanahoria", "pastel de zanahoria")) {
+            return "carrot_cake";
+        }
+
+        if (containsAny(text, "alfajor", "alfajores")) {
+            return "alfajor";
+        }
+
+        if (containsAny(text, "natilla")) {
+            return "natilla";
+        }
+
+        if (containsAny(text, "llelato", "jelato", "yelato", "gelatto", "gelatoo", "gelato")) {
+            return "gelato";
+        }
+
+        if (containsAny(text, "sorbete", "sorbet", "sorvete", "sorbeto")) {
+            return "sorbet";
+        }
+
+        if (containsAny(text, "tiramisuu", "teramisu", "tiramizu", "tiramisu", "tiramisú")) {
+            return "tiramisu";
+        }
+
+        if (containsAny(text, "pana cota", "panacotta", "pana cotta", "panna cota", "panna cotta", "pannacotta")) {
+            return "panna_cotta";
+        }
+
+        if (containsAny(text, "crem brule", "creme brule", "creme brulee", "crème brûlée", "crema brule", "crema catalana")) {
+            return "creme_brulee";
+        }
+
+        if (containsAny(text, "baklava", "baklawa", "baklaba")) {
+            return "baklava";
+        }
+
+        if (containsAny(text, "cannoli", "cannolo", "canoli", "canolli")) {
+            return "cannoli";
+        }
+
+        if (containsAny(text, "profiterol", "profiteroles", "profiterole")) {
+            return "profiteroles";
+        }
+
+        if (containsAny(text, "eclair", "éclair", "eclaire", "eclairs")) {
+            return "eclair";
+        }
+
+        if (containsAny(text, "pavlova", "pablova")) {
+            return "pavlova";
+        }
+
+        if (containsAny(text, "mochi", "muchi", "moci")) {
+            return "mochi";
+        }
+
+        if (containsAny(text, "tresleches", "tres leche", "tres leches", "torta tres leches", "pastel tres leches")) {
+            return "tres_leches";
+        }
+
+        if (containsAny(text, "arros con leche", "arroz leche", "arroz con lehe", "arroz con leche", "rice pudding")) {
+            return "arroz_con_leche";
+        }
+
+        if (containsAny(text, "lemom pie", "lemon pai", "lemon pie", "pie limon", "pie de limon", "pie de limón", "tarta de limon", "tarta de limón")) {
+            return "lemon_pie";
+        }
+
+        if (containsAny(text, "appel pie", "aple pie", "apple pie", "pie manzana", "pie de manzana", "tarta de manzana")) {
+            return "apple_pie";
+        }
+
+        if (containsAny(text, "red velvet", "terciopelo rojo", "pastel rojo")) {
+            return "red_velvet";
+        }
+
+        if (containsAny(text, "carrot cake", "torta de zanahoria", "pastel de zanahoria", "cake de zanahoria")) {
+            return "carrot_cake";
+        }
+
+        if (containsAny(text, "alfajor", "alfajores", "alfaajor")) {
+            return "alfajor";
+        }
+
+        if (containsAny(text, "natilla", "natilla colombiana", "custard dessert")) {
+            return "natilla";
+        }
+
+        if (containsAny(text, "churro", "churros", "churros con chocolate")) {
+            return "churros";
+        }
+
+        if (containsAny(text, "brownie", "brauni", "brownies")) {
+            return "brownie";
+        }
+
+        if (containsAny(text, "crepe", "crepes", "crepa", "crepas")) {
+            return "crepes";
+        }
+
+        if (containsAny(text, "waffle", "waffles", "wafle", "wafles")) {
+            return "waffle";
+        }
+
+        if (containsAny(text, "pancake", "pancakes", "hotcake", "hotcakes")) {
+            return "pancakes";
+        }
+
+        if (containsAny(text, "macaron", "macarron", "macarrón", "macarons")) {
+            return "macaron";
+        }
+
+        if (containsAny(text, "mousse", "muse de chocolate", "mousse de chocolate")) {
+            return "mousse";
+        }
+
+        if (containsAny(text, "parfait", "parfei")) {
+            return "parfait";
+        }
+
+        if (containsAny(text, "trifle", "traifel")) {
+            return "trifle";
+        }
+
+        if (containsAny(text, "opera cake", "opera", "pastel opera", "torta opera")) {
+            return "opera_cake";
+        }
+
+        if (containsAny(text, "black forest", "selva negra", "pastel selva negra", "torta selva negra")) {
+            return "black_forest_cake";
+        }
+
+        if (containsAny(text, "banoffee", "banoffee pie")) {
+            return "banoffee_pie";
+        }
+
+        if (containsAny(text, "key lime pie", "pie de lima", "tarta de lima")) {
+            return "key_lime_pie";
+        }
+
+        if (containsAny(text, "pecan pie", "pie de pecanas", "tarta de pecanas")) {
+            return "pecan_pie";
+        }
+
+        if (containsAny(text, "pumpkin pie", "pie de calabaza", "tarta de calabaza")) {
+            return "pumpkin_pie";
+        }
+
+        if (containsAny(text, "pudding", "budin", "budín")) {
+            return "pudding";
+        }
+
+        if (containsAny(text, "quesillo")) {
+            return "quesillo";
+        }
+
+        if (containsAny(text, "cake pop", "cake pops", "pop cake")) {
+            return "cake_pop";
+        }
+
+        if (containsAny(text, "roll cake", "brazo de reina", "brazo gitano", "pionono")) {
+            return "roll_cake";
+        }
+
+        if (containsAny(text, "cinnamon roll", "rollo de canela", "roles de canela")) {
+            return "cinnamon_roll";
+        }
+
+        if (containsAny(text, "banana split")) {
+            return "banana_split";
+        }
+
+        if (containsAny(text, "sundae")) {
+            return "sundae";
+        }
+
+        if (containsAny(text, "milkshake", "malteada", "batido dulce")) {
+            return "milkshake_dessert";
+        }
+
+        if (containsAny(text, "buñuelo", "buñuelos")) {
+            return "bunuelos";
+        }
+
+        if (containsAny(text, "mazamorra dulce", "mazamorra")) {
+            return "mazamorra_dulce";
+        }
+
+        if (containsAny(text, "brevas con arequipe", "brevas con dulce de leche")) {
+            return "brevas_arequipe";
+        }
+
+        if (containsAny(text, "buñuelo", "buñuelos", "bunuelos", "bunuelo")) {
+            return "bunuelos";
+        }
+
+        if (containsAny(text, "mazamorra dulce", "mazamorra", "mazamorra con leche")) {
+            return "mazamorra_dulce";
+        }
+
+        if (containsAny(text, "brevas con arequipe", "brevas con dulce de leche", "brevas dulces")) {
+            return "brevas_arequipe";
+        }
+
+        if (containsAny(text, "arroz con coco", "arros con coco", "rice coconut pudding")) {
+            return "arroz_con_coco";
+        }
+
+        if (containsAny(text, "cocada", "cocadas", "dulce de coco")) {
+            return "cocada";
+        }
+
+        if (containsAny(text, "marquesa", "marquesa de chocolate", "marquesa venezolana")) {
+            return "marquesa";
+        }
+
+        if (containsAny(text, "suspiro limeño", "suspiro limeno", "suspiro de limeña", "suspiro de limena")) {
+            return "suspiro_limeno";
+        }
+
+        if (containsAny(text, "obleas", "oblea", "oblea con arequipe", "obleas con arequipe")) {
+            return "oblea_arequipe";
+        }
+
+        if (containsAny(text, "dulce de leche", "arequipe", "manjar blanco", "cajeta")) {
+            return "dulce_de_leche";
+        }
+
+        if (containsAny(text, "flan de coco", "quesillo de coco")) {
+            return "flan_coco";
+        }
+
+        if (containsAny(text, "torta negra", "torta negra colombiana", "torta negra venezolana")) {
+            return "torta_negra";
+        }
+
+        if (containsAny(text, "postre de natas", "natas", "postre natas")) {
+            return "postre_natas";
+        }
+
+        if (containsAny(text, "merengon", "merengón", "merengon de fresa", "merengón de fresa")) {
+            return "merengon";
+        }
+
+        if (containsAny(text, "chocotorta", "choco torta")) {
+            return "chocotorta";
+        }
+
+        if (containsAny(text, "brigadeiro", "brigadeiros", "brigadero")) {
+            return "brigadeiro";
+        }
+
+        if (containsAny(text, "beijinho", "beijinhos", "besito de coco")) {
+            return "beijinho";
+        }
+
+        if (containsAny(text, "pan de bono dulce", "pandebono dulce", "pandebono")) {
+            return "pandebono_dulce";
+        }
+
+        if (containsAny(text, "roscon", "roscón", "roscon dulce", "roscón dulce")) {
+            return "roscon";
+        }
+
         if (containsAny(text, "helado", "ice cream", "copa de helado")) {
             return "ice_cream";
         }
@@ -597,6 +931,51 @@ public class GeminiClient {
             case "strawberry_cake" -> "Pastel de fresa decorado";
             case "donut" -> "Dona glaseada artesanal";
             case "ice_cream" -> "Copa de helado cremosa";
+            case "gelato" -> "Gelato artesanal";
+            case "sorbet" -> "Sorbete artesanal";
+            case "tiramisu" -> "Tiramisú clásico";
+            case "panna_cotta" -> "Panna cotta cremosa";
+            case "baklava" -> "Baklava artesanal";
+            case "creme_brulee" -> "Crème brûlée clásica";
+            case "cannoli" -> "Cannoli siciliano";
+            case "profiteroles" -> "Profiteroles rellenos";
+            case "eclair" -> "Éclair de crema";
+            case "pavlova" -> "Pavlova con fruta";
+            case "mochi" -> "Mochi dulce";
+            case "tres_leches" -> "Pastel de tres leches";
+            case "arroz_con_leche" -> "Arroz con leche cremoso";
+            case "lemon_pie" -> "Lemon pie";
+            case "apple_pie" -> "Apple pie";
+            case "red_velvet" -> "Red velvet";
+            case "carrot_cake" -> "Carrot cake";
+            case "alfajor" -> "Alfajor relleno";
+            case "natilla" -> "Natilla tradicional";
+            case "churros" -> "Churros con azúcar";
+            case "brownie" -> "Brownie de chocolate";
+            case "crepes" -> "Crepes dulces";
+            case "waffle" -> "Waffle dulce";
+            case "pancakes" -> "Pancakes dulces";
+            case "macaron" -> "Macaron francés";
+            case "mousse" -> "Mousse cremoso";
+            case "parfait" -> "Parfait en capas";
+            case "trifle" -> "Trifle de crema y fruta";
+            case "opera_cake" -> "Opera cake";
+            case "black_forest_cake" -> "Pastel selva negra";
+            case "banoffee_pie" -> "Banoffee pie";
+            case "key_lime_pie" -> "Key lime pie";
+            case "pecan_pie" -> "Pecan pie";
+            case "pumpkin_pie" -> "Pumpkin pie";
+            case "pudding" -> "Pudding dulce";
+            case "quesillo" -> "Quesillo cremoso";
+            case "cake_pop" -> "Cake pop decorado";
+            case "roll_cake" -> "Roll cake relleno";
+            case "cinnamon_roll" -> "Rollo de canela";
+            case "banana_split" -> "Banana split";
+            case "sundae" -> "Sundae clásico";
+            case "milkshake_dessert" -> "Malteada dulce";
+            case "bunuelos" -> "Buñuelos dulces";
+            case "mazamorra_dulce" -> "Mazamorra dulce";
+            case "brevas_arequipe" -> "Brevas con arequipe";
             case "milhojas" -> "Milhojas clásica de crema";
             case "cupcake" -> "Cupcake decorado de vainilla";
             case "cheesecake" -> "Cheesecake suave tradicional";
@@ -612,6 +991,51 @@ public class GeminiClient {
             case "strawberry_cake" -> "Pastel suave con notas de fresa, ideal para una presentación fresca y llamativa.";
             case "donut" -> "Dona esponjosa con glaseado brillante, pensada para una preparación sencilla y vistosa.";
             case "ice_cream" -> "Copa fría y cremosa con textura suave, ideal como postre rápido y visualmente atractivo.";
+            case "gelato" -> "Postre italiano frío, cremoso y denso, con textura suave y sabor intenso.";
+            case "sorbet" -> "Postre helado ligero a base de fruta, fresco y de textura cristalina.";
+            case "tiramisu" -> "Postre italiano en capas con crema, café y cacao, suave y aromático.";
+            case "panna_cotta" -> "Postre italiano cremoso y delicado, servido frío con salsa dulce o fruta.";
+            case "baklava" -> "Postre crujiente de capas finas con frutos secos y almíbar.";
+            case "creme_brulee" -> "Postre cremoso con superficie caramelizada y contraste crujiente.";
+            case "cannoli" -> "Postre siciliano crujiente relleno de crema dulce, tradicionalmente con ricotta.";
+            case "profiteroles" -> "Pequeños bocados de masa choux rellenos de crema y cubiertos con salsa dulce.";
+            case "eclair" -> "Pieza alargada de masa choux rellena de crema y cubierta con glaseado.";
+            case "pavlova" -> "Postre de merengue crujiente por fuera y suave por dentro, usualmente con fruta.";
+            case "mochi" -> "Dulce japonés de textura elástica elaborado con arroz glutinoso.";
+            case "tres_leches" -> "Pastel húmedo y suave bañado con mezcla de tres leches.";
+            case "arroz_con_leche" -> "Postre cremoso de arroz cocido lentamente con leche, azúcar y canela.";
+            case "lemon_pie" -> "Tarta con base crujiente, crema de limón y cubierta de merengue.";
+            case "apple_pie" -> "Tarta horneada de manzana con masa dorada y especias suaves.";
+            case "red_velvet" -> "Pastel rojo aterciopelado con cacao suave y crema de queso.";
+            case "carrot_cake" -> "Pastel especiado de zanahoria con textura húmeda y cobertura cremosa.";
+            case "alfajor" -> "Dulce relleno, usualmente con arequipe o dulce de leche, cubierto o espolvoreado.";
+            case "natilla" -> "Postre cremoso tradicional, suave y aromático, servido frío o templado.";
+            case "churros" -> "Masa frita crujiente espolvoreada con azúcar y canela.";
+            case "brownie" -> "Postre denso de chocolate con interior húmedo y superficie ligeramente crujiente.";
+            case "crepes" -> "Láminas finas y suaves servidas con rellenos dulces.";
+            case "waffle" -> "Postre dorado con textura exterior crujiente y centro suave.";
+            case "pancakes" -> "Tortitas dulces esponjosas servidas con miel, frutas o crema.";
+            case "macaron" -> "Galleta francesa delicada con relleno cremoso.";
+            case "mousse" -> "Postre aireado y cremoso de textura ligera.";
+            case "parfait" -> "Postre frío servido en capas con crema, fruta o crujientes.";
+            case "trifle" -> "Postre en capas con bizcocho, crema y fruta.";
+            case "opera_cake" -> "Pastel francés en capas con café, chocolate y crema.";
+            case "black_forest_cake" -> "Pastel de chocolate con crema y cerezas.";
+            case "banoffee_pie" -> "Tarta dulce de banana, caramelo y crema.";
+            case "key_lime_pie" -> "Tarta cítrica de lima con textura cremosa.";
+            case "pecan_pie" -> "Tarta dulce de nueces pecanas con relleno caramelizado.";
+            case "pumpkin_pie" -> "Tarta especiada de calabaza con relleno suave.";
+            case "pudding" -> "Postre cremoso y suave servido frío o templado.";
+            case "quesillo" -> "Postre tipo flan, suave y cremoso, con caramelo.";
+            case "cake_pop" -> "Bocado de pastel moldeado en paleta y decorado.";
+            case "roll_cake" -> "Bizcocho enrollado con relleno dulce.";
+            case "cinnamon_roll" -> "Rollo dulce con canela, glaseado y masa suave.";
+            case "banana_split" -> "Postre frío con banana, helado, salsas y toppings.";
+            case "sundae" -> "Helado servido con salsa dulce, crema y toppings.";
+            case "milkshake_dessert" -> "Bebida dulce cremosa tipo postre, servida fría.";
+            case "bunuelos" -> "Bocados fritos tradicionales, dorados y suaves.";
+            case "mazamorra_dulce" -> "Postre tradicional cremoso a base de maíz o leche.";
+            case "brevas_arequipe" -> "Postre de brevas dulces acompañado con arequipe.";
             case "milhojas" -> "Capas crujientes de hojaldre con crema suave, equilibrando textura y dulzor.";
             default -> "Postre personalizado generado a partir del pedido del usuario.";
         };
@@ -630,10 +1054,74 @@ public class GeminiClient {
         };
     }
 
+
     private List<Map<String, Object>> fallbackIngredients(String dessertType) {
         List<Map<String, Object>> ingredients = new ArrayList<>();
 
         switch (dessertType) {
+            case "gelato" -> {
+                ingredients.add(ingredient("Leche entera", "500", "ml"));
+                ingredients.add(ingredient("Crema de leche", "250", "ml"));
+                ingredients.add(ingredient("Azúcar", "140", "g"));
+                ingredients.add(ingredient("Yemas de huevo", "4", "unidades"));
+                ingredients.add(ingredient("Leche en polvo", "35", "g"));
+                ingredients.add(ingredient("Vainilla o pasta de sabor", "1", "cucharadita"));
+                ingredients.add(ingredient("Estabilizante para helado", "2", "g"));
+            }
+            case "sorbet" -> {
+                ingredients.add(ingredient("Pulpa de fruta", "500", "g"));
+                ingredients.add(ingredient("Agua", "220", "ml"));
+                ingredients.add(ingredient("Azúcar", "150", "g"));
+                ingredients.add(ingredient("Glucosa o miel suave", "40", "g"));
+                ingredients.add(ingredient("Jugo de limón", "20", "ml"));
+            }
+            case "tiramisu" -> {
+                ingredients.add(ingredient("Bizcochos de soletilla", "250", "g"));
+                ingredients.add(ingredient("Café espresso frío", "300", "ml"));
+                ingredients.add(ingredient("Queso mascarpone", "500", "g"));
+                ingredients.add(ingredient("Yemas de huevo", "4", "unidades"));
+                ingredients.add(ingredient("Azúcar", "120", "g"));
+                ingredients.add(ingredient("Cacao en polvo", "25", "g"));
+            }
+            case "panna_cotta" -> {
+                ingredients.add(ingredient("Crema de leche", "500", "ml"));
+                ingredients.add(ingredient("Leche", "120", "ml"));
+                ingredients.add(ingredient("Azúcar", "90", "g"));
+                ingredients.add(ingredient("Gelatina sin sabor", "8", "g"));
+                ingredients.add(ingredient("Vainilla", "1", "cucharadita"));
+                ingredients.add(ingredient("Salsa de frutos rojos", "120", "g"));
+            }
+            case "baklava" -> {
+                ingredients.add(ingredient("Masa filo", "300", "g"));
+                ingredients.add(ingredient("Nueces o pistachos", "250", "g"));
+                ingredients.add(ingredient("Mantequilla derretida", "180", "g"));
+                ingredients.add(ingredient("Miel", "180", "g"));
+                ingredients.add(ingredient("Azúcar", "120", "g"));
+                ingredients.add(ingredient("Canela", "1", "cucharadita"));
+            }
+            case "creme_brulee" -> {
+                ingredients.add(ingredient("Crema de leche", "500", "ml"));
+                ingredients.add(ingredient("Yemas de huevo", "5", "unidades"));
+                ingredients.add(ingredient("Azúcar", "100", "g"));
+                ingredients.add(ingredient("Vainilla", "1", "vaina"));
+                ingredients.add(ingredient("Azúcar para caramelizar", "60", "g"));
+            }
+            case "brownie" -> {
+                ingredients.add(ingredient("Chocolate oscuro", "200", "g"));
+                ingredients.add(ingredient("Mantequilla", "160", "g"));
+                ingredients.add(ingredient("Azúcar", "180", "g"));
+                ingredients.add(ingredient("Huevos", "3", "unidades"));
+                ingredients.add(ingredient("Harina de trigo", "90", "g"));
+                ingredients.add(ingredient("Cacao en polvo", "25", "g"));
+            }
+            case "churros" -> {
+                ingredients.add(ingredient("Agua", "250", "ml"));
+                ingredients.add(ingredient("Harina de trigo", "160", "g"));
+                ingredients.add(ingredient("Mantequilla", "40", "g"));
+                ingredients.add(ingredient("Sal", "1", "pizca"));
+                ingredients.add(ingredient("Azúcar", "60", "g"));
+                ingredients.add(ingredient("Canela", "1", "cucharadita"));
+            }
             case "flan" -> {
                 ingredients.add(ingredient("Huevos", "5", "unidades"));
                 ingredients.add(ingredient("Leche condensada", "395", "g"));
@@ -682,27 +1170,76 @@ public class GeminiClient {
                 ingredients.add(ingredient("Vainilla", "1", "cucharadita"));
             }
             default -> {
-                ingredients.add(ingredient("Harina de trigo", "220", "g"));
-                ingredients.add(ingredient("Azúcar", "160", "g"));
-                ingredients.add(ingredient("Huevos", "3", "unidades"));
-                ingredients.add(ingredient("Leche", "160", "ml"));
-                ingredients.add(ingredient("Mantequilla", "110", "g"));
-                ingredients.add(ingredient("Polvo de hornear", "10", "g"));
+                ingredients.add(ingredient("Base principal del postre", "1", "unidad"));
+                ingredients.add(ingredient("Crema o relleno", "250", "g"));
+                ingredients.add(ingredient("Azúcar", "120", "g"));
+                ingredients.add(ingredient("Vainilla o sabor principal", "1", "cucharadita"));
+                ingredients.add(ingredient("Decoración comestible", "100", "g"));
             }
         }
 
         return ingredients;
     }
 
+
+
     private List<Map<String, Object>> fallbackSteps(String dessertType) {
         List<Map<String, Object>> steps = new ArrayList<>();
-        steps.add(step("Preparar la base", "Organizar ingredientes, precalentar el horno o preparar el molde según el tipo de postre."));
-        steps.add(step("Mezclar", "Integrar los ingredientes secos y líquidos hasta obtener una mezcla homogénea y estable."));
-        steps.add(step("Cocinar o enfriar", "Hornear, cocinar a baño María, freír o congelar según corresponda al postre."));
-        steps.add(step("Reposar", "Dejar enfriar o estabilizar para mejorar textura, corte y presentación."));
-        steps.add(step("Decorar", "Agregar toppings o acabados visuales justo antes de servir para conservar textura y volumen."));
+
+        switch (dessertType) {
+            case "gelato" -> {
+                steps.add(step("Preparar la base láctea", "Calentar leche, crema y parte del azúcar sin dejar hervir."));
+                steps.add(step("Templar las yemas", "Batir yemas con azúcar e integrar poco a poco la mezcla caliente."));
+                steps.add(step("Cocinar la crema", "Cocinar a fuego bajo hasta espesar ligeramente y alcanzar textura de crema inglesa."));
+                steps.add(step("Madurar en frío", "Reposar la base en refrigeración durante varias horas para mejorar textura y sabor."));
+                steps.add(step("Mantecar y congelar", "Procesar en máquina de helado o congelar batiendo por intervalos hasta obtener gelato cremoso."));
+            }
+            case "sorbet" -> {
+                steps.add(step("Preparar almíbar", "Calentar agua, azúcar y glucosa hasta disolver."));
+                steps.add(step("Mezclar con fruta", "Integrar el almíbar frío con la pulpa de fruta y jugo de limón."));
+                steps.add(step("Reposar", "Refrigerar la mezcla para estabilizar sabor y textura."));
+                steps.add(step("Congelar", "Mantecar o congelar batiendo por intervalos hasta lograr textura ligera."));
+            }
+            case "tiramisu" -> {
+                steps.add(step("Preparar la crema", "Batir yemas con azúcar y mezclar con mascarpone hasta obtener una crema suave."));
+                steps.add(step("Remojar bizcochos", "Pasar los bizcochos por café frío sin empaparlos demasiado."));
+                steps.add(step("Montar capas", "Alternar capas de bizcocho y crema en un molde."));
+                steps.add(step("Refrigerar", "Reposar varias horas para que tome cuerpo."));
+                steps.add(step("Finalizar", "Cubrir con cacao justo antes de servir."));
+            }
+            case "panna_cotta" -> {
+                steps.add(step("Hidratar gelatina", "Hidratar la gelatina en agua fría hasta que esté blanda."));
+                steps.add(step("Calentar la crema", "Calentar crema, leche, azúcar y vainilla sin hervir."));
+                steps.add(step("Integrar gelatina", "Añadir la gelatina hidratada y mezclar hasta disolver."));
+                steps.add(step("Moldear", "Verter en moldes y refrigerar hasta cuajar."));
+                steps.add(step("Servir", "Desmoldar y acompañar con salsa de fruta o caramelo."));
+            }
+            case "baklava" -> {
+                steps.add(step("Preparar el relleno", "Picar frutos secos y mezclarlos con canela."));
+                steps.add(step("Montar capas", "Alternar masa filo con mantequilla y frutos secos."));
+                steps.add(step("Cortar", "Marcar porciones antes de hornear."));
+                steps.add(step("Hornear", "Hornear hasta que la masa esté dorada y crujiente."));
+                steps.add(step("Bañar con almíbar", "Agregar miel o almíbar tibio y dejar reposar."));
+            }
+            case "creme_brulee" -> {
+                steps.add(step("Infusionar la crema", "Calentar crema con vainilla para extraer aroma."));
+                steps.add(step("Mezclar yemas", "Batir yemas con azúcar e integrar la crema tibia."));
+                steps.add(step("Hornear a baño María", "Cocinar en recipientes individuales hasta que la crema esté firme pero suave."));
+                steps.add(step("Enfriar", "Refrigerar hasta que tome textura."));
+                steps.add(step("Caramelizar", "Cubrir con azúcar y quemar hasta formar una costra crujiente."));
+            }
+            default -> {
+                steps.add(step("Preparar ingredientes", "Organizar los ingredientes según el tipo de postre solicitado."));
+                steps.add(step("Elaborar la base", "Preparar la base, crema, masa o mezcla principal del postre."));
+                steps.add(step("Cocinar o enfriar", "Aplicar la técnica adecuada: hornear, freír, refrigerar, congelar o montar en capas."));
+                steps.add(step("Reposar", "Permitir que el postre estabilice textura, sabor y presentación."));
+                steps.add(step("Decorar", "Agregar acabados visuales comestibles antes de servir."));
+            }
+        }
+
         return steps;
     }
+
 
     private Map<String, Object> ingredient(String name, String quantity, String unit) {
         Map<String, Object> ingredient = new LinkedHashMap<>();
@@ -797,7 +1334,11 @@ public class GeminiClient {
                 "cheesecake", "tarta", "pay", "pie", "cupcake", "magdalena", "brownie",
                 "galleta", "macaron", "macarron", "macarrón", "chocolate", "fresa", "cereza",
                 "arandano", "arándano", "blueberry", "crema", "chantilly", "vainilla",
-                "caramelo", "glaseado", "merengue", "mousse", "rosa", "velas", "vela"
+                "caramelo", "glaseado", "merengue", "mousse", "rosa", "velas", "vela",
+                "llelato", "jelato", "yelato", "gelatto", "gelatoo", "gelato", "gelateria", "gelatería", "sorbete", "sorbet", "granita", "semifreddo",
+                "tiramisu", "tiramisú", "panna cotta", "pannacotta", "creme brulee", "crema catalana",
+                "profiterol", "profiteroles", "eclair", "éclair", "baklava", "churro", "churros",
+                "alfajor", "alfajores", "tres leches", "parfait", "mochi", "paleta", "paleta helada"
         );
     }
 

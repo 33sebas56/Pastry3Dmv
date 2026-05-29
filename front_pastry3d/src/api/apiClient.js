@@ -313,6 +313,13 @@ export const apiClient = {
     });
   },
 
+
+  async getActiveTripoJob(recipeId) {
+    return request(`/generation-jobs/recipes/${recipeId}/active-tripo`, {
+      method: "GET",
+    });
+  },
+
   async startTripoGeneration(recipeId) {
     return request(`/generation-jobs/recipes/${recipeId}/start-tripo`, {
       method: "POST",

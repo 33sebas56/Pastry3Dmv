@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface GenerationJobRepository extends JpaRepository<GenerationJob, Long> {
     List<GenerationJob> findByRecipeIdOrderByCreatedAtDesc(Long recipeId);
+
+    List<GenerationJob> findByRecipeIdAndProviderAndStatusInOrderByCreatedAtDesc(Long recipeId, String provider, List<String> statuses);
 }
